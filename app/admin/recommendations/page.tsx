@@ -1,0 +1,2 @@
+import { AdminShell } from "@/components/admin/AdminShell";import { RulesManager } from "@/components/admin/RulesManager";
+export default function Page(){return <AdminShell title="قوانین پیشنهاد مروا" subtitle="قواعد قابل ویرایش برای رتبه‌بندی پیشنهادها؛ نه قوانین مطلق زیبایی"><div className="mode-strip"><span><b>طبیعی</b> Subtle</span><span className="main"><b>متعادل</b> Enhanced · پیشنهاد اصلی</span><span><b>جسورانه</b> Bold</span></div><RulesManager/></AdminShell>}
