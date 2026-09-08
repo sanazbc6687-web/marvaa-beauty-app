@@ -1,4 +1,4 @@
-# Marvaa Future Mirror V2
+# Marvaa Future Mirror V3
 
 تجربه‌ی RTL و mobile-first آینه‌ی زیبایی مروا با Next.js، React، TypeScript و معماری آماده‌ی Supabase و multi-tenancy.
 
@@ -8,7 +8,12 @@ npm install
 npm run dev
 ```
 - تجربه مشتری: `/`
-- اتاق کنترل: `/admin`
+- ورود امن مدیریت: `/admin/login`
+- اتاق کنترل محافظت‌شده: `/admin`
+- کتابخانه رفرنس: `/admin/references`
+- قوانین پیشنهاد: `/admin/recommendations`
+- لیدها: `/admin/leads`
+- گالری سالن: `/admin/portfolio`
 
 ## معماری
 - `components/mirror/MirrorUI.tsx`: زبان بصری مشترک Mirror UI.
@@ -20,8 +25,18 @@ npm run dev
 ## ویدئوی خوش‌آمد
 فایل فعلی در `public/videos/marvaa-welcome.mp4` است. مسیر آن از `demoTenant.consultant.videoUrl` می‌آید؛ در نسخه متصل به Supabase، مقدار `consultant_profiles.welcome_video_url` را از پنل «برند و مشاور» تغییر دهید. پوستر نیز به همین شکل قابل جایگزینی است.
 
-## بخش‌های Mock
-تولید تصویر، آمار/ذخیره پنل، تصاویر پورتفولیو و Beauty ID در MVP محلی و Mock هستند. `generateBeautySimulation()` تصویر ورودی را همراه metadata، prompt و فهرست مراجع استفاده‌شده برمی‌گرداند و هیچ API پولی فراخوانی نمی‌شود.
+## راه‌اندازی Supabase
+1. یک پروژه Supabase بسازید و migrationهای `supabase/migrations` را به‌ترتیب اجرا کنید.
+2. در تنظیمات استقرار، `NEXT_PUBLIC_SUPABASE_URL` و `NEXT_PUBLIC_SUPABASE_ANON_KEY` عمومی پروژه را تنظیم کنید. هیچ service-role key یا رمز مدیریتی را در مرورگر قرار ندهید.
+3. در Supabase Dashboard بخش **Authentication > Users** یک کاربر Email/Password بسازید.
+4. شناسه همان کاربر را در SQL Editor با tenant دمو عضو کنید:
+   `insert into tenant_users (tenant_id,user_id,role) values ('00000000-0000-0000-0000-000000000001','<AUTH_USER_UUID>','owner');`
+5. با همان ایمیل در `/admin/login` وارد شوید. برای هر سالن آینده، عضویت و داده‌های همان `tenant_id` را بسازید؛ RLS دسترسی متقاطع را مسدود می‌کند.
+
+برای افزودن تصاویر Pilot، بعد از ورود به `/admin/references` ابتدا لاین خدمات، سپس گروه و گزینه را باز کنید؛ چند فایل را هم‌زمان انتخاب کنید، تصویر Primary را با ستاره تعیین و ترتیب را با فلش‌ها تنظیم کنید. فایل‌ها در bucket خصوصی `style-references` و مسیر `{tenant_id}/{service}/{reference}/{filename}` نگهداری می‌شوند. گالری واقعی سالن از مسیر `/admin/portfolio` و bucket عمومیِ فقط-خواندنی `salon-portfolio` مدیریت می‌شود و هرگز خودکار به رفرنس AI تبدیل نمی‌شود.
+
+## بخش‌های Mock / fallback
+تولید تصویر و تحلیل Beauty Profile همچنان Mock هستند و هیچ API پولی فراخوانی نمی‌شود. بدون متغیرهای Supabase، تجربه مشتری و build کامل کار می‌کنند، داده‌های Pilot در fallback تایپ‌شده دیده می‌شوند و صفحه ورود پیام تنظیمات نشان می‌دهد؛ ورود و ذخیره دائمی عمداً ممکن نیست. آمار داشبورد تا وجود داده واقعی empty state نشان می‌دهد.
 
 ## اتصال provider واقعی در آینده
 Reference Library ابتدا optionها را به تصاویر و قوانین مستقل تبدیل می‌کند. سپس `buildBeautyPrompt()` انتخاب کاربر، reference metadata و قوانین حفظ هویت را ترکیب می‌کند. provider واقعی باید پشت یک route امن سرور قرار بگیرد؛ کلید API فقط سرور باشد و تنها implementation سرویس generation جایگزین شود.
