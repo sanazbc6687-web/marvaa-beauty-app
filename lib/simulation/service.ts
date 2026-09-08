@@ -1,7 +1,5 @@
-import { buildSimulationPrompt, IDENTITY_RULES } from "./prompt-builder";
-export type SimulationInput = { userImage: string; serviceCategory: string; selections: Record<string,string>; consultationRecommendations?: string[]; identityPreservationInstructions?: string };
-export type SimulationResult = { generatedImageUrl: string; status: "completed"|"failed"; metadata: { provider: "mock"; prompt: string; createdAt: string } };
-export async function generateBeautySimulation(input: SimulationInput): Promise<SimulationResult> {
-  await new Promise(resolve => setTimeout(resolve, 2400));
-  return { generatedImageUrl: input.userImage, status:"completed", metadata:{ provider:"mock", prompt:buildSimulationPrompt({category:input.serviceCategory,selections:input.selections,recommendations:input.consultationRecommendations}) + (input.identityPreservationInstructions || IDENTITY_RULES), createdAt:new Date().toISOString() } };
-}
+import { RecommendationMode, StyleReference } from "../types";
+import { buildBeautyPrompt, IDENTITY_RULES } from "./prompt-builder";
+export type SimulationInput={userImage:string;tenantId:string;serviceCategory:string;selectedOptions:Record<string,string>;selectedReferences:(StyleReference|string)[];recommendationMode?:RecommendationMode;identityPreservationInstructions?:string[]};
+export type SimulationResult={generatedImageUrl:string;status:"completed"|"failed";metadata:{provider:"mock";prompt:string;tenantId:string;createdAt:string};referencesUsed:string[]};
+export async function generateBeautySimulation(input:SimulationInput):Promise<SimulationResult>{await new Promise(r=>setTimeout(r,2200));const hydrated=input.selectedReferences.filter((x):x is StyleReference=>typeof x!=="string");return{generatedImageUrl:input.userImage,status:"completed",metadata:{provider:"mock",tenantId:input.tenantId,prompt:buildBeautyPrompt({serviceCategory:input.serviceCategory,selectedOptions:input.selectedOptions,selectedReferences:hydrated,recommendationMode:input.recommendationMode,identityPreservationInstructions:input.identityPreservationInstructions||IDENTITY_RULES}),createdAt:new Date().toISOString()},referencesUsed:input.selectedReferences.map(x=>typeof x==="string"?x:x.id)}}

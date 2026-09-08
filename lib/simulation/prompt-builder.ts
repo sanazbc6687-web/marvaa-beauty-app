@@ -1,6 +1,3 @@
-export const IDENTITY_RULES = "Preserve the subject's identity exactly: face shape, eyes, nose, lips, skin texture and all recognizable features. Modify only the selected beauty-service area. Preserve camera angle, expression and lighting.";
-export function buildSimulationPrompt(input: { category: string; selections: Record<string,string>; recommendations?: string[] }) {
-  const details = Object.entries(input.selections).map(([key,value]) => `${key}: ${value}`).join(", ");
-  const hairRule = input.category === "hair-color" ? "Preserve exact hair length. Render each requested undertone distinctly and keep original lighting." : "";
-  return `${IDENTITY_RULES} Service: ${input.category}. Requested details: ${details}. ${hairRule} Recommendations: ${(input.recommendations || []).join(", ")}.`;
-}
+import { RecommendationMode, StyleReference } from "../types";
+export const IDENTITY_RULES=["Preserve face structure, eyes, nose, lips, skin identity, and every recognizable facial feature","Change only explicitly selected areas","Hair color must not alter haircut unless a haircut is selected","Lashes must not alter makeup, brows, or eye shape","Brows must not reshape the face","Nail edits are restricted to nails and the relevant hand area"];
+export function buildBeautyPrompt(input:{serviceCategory:string;selectedOptions:Record<string,string>;selectedReferences:StyleReference[];recommendationMode?:RecommendationMode;identityPreservationInstructions?:string[]}){const refs=input.selectedReferences.map(r=>`${r.slug}: ${r.promptFragment}; rules: ${r.generationRules.join("; ")}; avoid: ${r.negativeConstraints.join("; ")}`).join(" | ");return [`Beauty simulation for service: ${input.serviceCategory}.`,`Selections: ${JSON.stringify(input.selectedOptions)}.`,`Reference-aware instructions: ${refs||"Use curated mock recommendation metadata"}.`,`Mode: ${input.recommendationMode||"manual"}.`,...(input.identityPreservationInstructions||IDENTITY_RULES)].join(" ")}

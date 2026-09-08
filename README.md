@@ -1,30 +1,27 @@
-# Marvaa Beauty — MVP
+# Marvaa Future Mirror V2
 
-وب‌اپ فارسی و mobile-first برای انتخاب و شبیه‌سازی خدمات زیبایی با معماری white-label و آماده‌ی multi-tenancy.
+تجربه‌ی RTL و mobile-first آینه‌ی زیبایی مروا با Next.js، React، TypeScript و معماری آماده‌ی Supabase و multi-tenancy.
 
 ## اجرا
-
 ```bash
 npm install
 npm run dev
 ```
-
-- تجربه کاربر: `http://localhost:3000`
-- داشبورد: `http://localhost:3000/admin`
+- تجربه مشتری: `/`
+- اتاق کنترل: `/admin`
 
 ## معماری
+- `components/mirror/MirrorUI.tsx`: زبان بصری مشترک Mirror UI.
+- `lib/catalog.ts`: fallback دو‌زبانه و database-ready برای دسته‌ها، تصمیم‌ها و گزینه‌ها.
+- `lib/simulation/`: Prompt Builder مرجع‌محور و provider کاملاً Mock.
+- `lib/tenant.ts`: tenant دمو؛ در تولید براساس hostname از Supabase خوانده می‌شود.
+- `supabase/migrations/002_future_mirror_v2.sql`: Reference Library، تصاویر مرجع، Portfolio مستقل و Beauty Profile.
 
-- `app/`: مسیرهای تجربه کاربر و داشبورد مدیریت
-- `components/`: اجزای مشترک برند و مشاور
-- `lib/tenant.ts`: تنظیمات tenant دمو (در استقرار واقعی بر اساس hostname از Supabase)
-- `lib/catalog.ts`: fallback محلی کاتالوگ برای اجرای دمو بدون env
-- `lib/simulation/`: قرارداد مستقل تولید تصویر و Prompt Builder
-- `supabase/migrations/`: schema، ایندکس‌ها، RLS و seed اولیه
+## ویدئوی خوش‌آمد
+فایل فعلی در `public/videos/marvaa-welcome.mp4` است. مسیر آن از `demoTenant.consultant.videoUrl` می‌آید؛ در نسخه متصل به Supabase، مقدار `consultant_profiles.welcome_video_url` را از پنل «برند و مشاور» تغییر دهید. پوستر نیز به همین شکل قابل جایگزینی است.
 
 ## بخش‌های Mock
+تولید تصویر، آمار/ذخیره پنل، تصاویر پورتفولیو و Beauty ID در MVP محلی و Mock هستند. `generateBeautySimulation()` تصویر ورودی را همراه metadata، prompt و فهرست مراجع استفاده‌شده برمی‌گرداند و هیچ API پولی فراخوانی نمی‌شود.
 
-تولید تصویر در MVP عمداً Mock است و همان تصویر ورودی را پس از loading بازمی‌گرداند. آمار داشبورد و ذخیره فرم‌ها نیز داده نمایشی‌اند. فایل ویدئویی واقعی وجود ندارد و پوستر سبک جایگزین نمایش داده می‌شود.
-
-## اتصال provider تصویر در مرحله بعد
-
-یک route سمت سرور ایجاد کنید که فایل موقت را از Storage خصوصی بخواند، prompt ساخته‌شده را به provider مجاز ارسال کند، نتیجه را در bucket خصوصی ذخیره و ردیف `image_generations` را به‌روزرسانی کند. سپس تنها پیاده‌سازی `generateBeautySimulation` را به آن route متصل کنید؛ رابط و جریان UI نیاز به بازنویسی ندارند. کلید API باید فقط سمت سرور باشد.
+## اتصال provider واقعی در آینده
+Reference Library ابتدا optionها را به تصاویر و قوانین مستقل تبدیل می‌کند. سپس `buildBeautyPrompt()` انتخاب کاربر، reference metadata و قوانین حفظ هویت را ترکیب می‌کند. provider واقعی باید پشت یک route امن سرور قرار بگیرد؛ کلید API فقط سرور باشد و تنها implementation سرویس generation جایگزین شود.
