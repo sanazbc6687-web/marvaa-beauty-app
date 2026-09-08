@@ -11,7 +11,6 @@ npm run dev
 - ورود امن مدیریت: `/admin/login`
 - اتاق کنترل محافظت‌شده: `/admin`
 - کتابخانه رفرنس: `/admin/references`
-- قوانین پیشنهاد: `/admin/recommendations`
 - لیدها: `/admin/leads`
 - گالری سالن: `/admin/portfolio`
 
@@ -27,7 +26,7 @@ npm run dev
 
 ## راه‌اندازی Supabase
 1. یک پروژه Supabase بسازید و migrationهای `supabase/migrations` را به‌ترتیب اجرا کنید.
-2. در تنظیمات استقرار، `NEXT_PUBLIC_SUPABASE_URL` و `NEXT_PUBLIC_SUPABASE_ANON_KEY` عمومی پروژه را تنظیم کنید. هیچ service-role key یا رمز مدیریتی را در مرورگر قرار ندهید.
+2. در تنظیمات استقرار، `NEXT_PUBLIC_SUPABASE_URL` و ترجیحاً `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (یا نام قدیمی `NEXT_PUBLIC_SUPABASE_ANON_KEY`) عمومی پروژه را تنظیم کنید. هیچ service-role key یا رمز مدیریتی را در مرورگر قرار ندهید.
 3. در Supabase Dashboard بخش **Authentication > Users** یک کاربر Email/Password بسازید.
 4. شناسه همان کاربر را در SQL Editor با tenant دمو عضو کنید:
    `insert into tenant_users (tenant_id,user_id,role) values ('00000000-0000-0000-0000-000000000001','<AUTH_USER_UUID>','owner');`
@@ -36,7 +35,7 @@ npm run dev
 برای افزودن تصاویر Pilot، بعد از ورود به `/admin/references` ابتدا لاین خدمات، سپس گروه و گزینه را باز کنید؛ چند فایل را هم‌زمان انتخاب کنید، تصویر Primary را با ستاره تعیین و ترتیب را با فلش‌ها تنظیم کنید. فایل‌ها در bucket خصوصی `style-references` و مسیر `{tenant_id}/{service}/{reference}/{filename}` نگهداری می‌شوند. گالری واقعی سالن از مسیر `/admin/portfolio` و bucket عمومیِ فقط-خواندنی `salon-portfolio` مدیریت می‌شود و هرگز خودکار به رفرنس AI تبدیل نمی‌شود.
 
 ## بخش‌های Mock / fallback
-تولید تصویر و تحلیل Beauty Profile همچنان Mock هستند و هیچ API پولی فراخوانی نمی‌شود. بدون متغیرهای Supabase، تجربه مشتری و build کامل کار می‌کنند، داده‌های Pilot در fallback تایپ‌شده دیده می‌شوند و صفحه ورود پیام تنظیمات نشان می‌دهد؛ ورود و ذخیره دائمی عمداً ممکن نیست. آمار داشبورد تا وجود داده واقعی empty state نشان می‌دهد.
+تولید تصویر و تحلیل Beauty Profile همچنان Mock هستند و هیچ API پولی فراخوانی نمی‌شود. بدون متغیرهای Supabase، تجربه مشتری و build کامل با catalog محلی کار می‌کنند و صفحه ورود پیام تنظیمات نشان می‌دهد؛ ورود، آمار Admin و ذخیره دائمی عمداً ممکن نیست. پنل تولید هیچ داده جعلی نمایش نمی‌دهد.
 
 ## اتصال provider واقعی در آینده
 Reference Library ابتدا optionها را به تصاویر و قوانین مستقل تبدیل می‌کند. سپس `buildBeautyPrompt()` انتخاب کاربر، reference metadata و قوانین حفظ هویت را ترکیب می‌کند. provider واقعی باید پشت یک route امن سرور قرار بگیرد؛ کلید API فقط سرور باشد و تنها implementation سرویس generation جایگزین شود.
@@ -46,3 +45,8 @@ Reference Library ابتدا optionها را به تصاویر و قوانین �
 
 ## تایپوگرافی
 توکن‌های معنایی قلم در CSS تعریف شده‌اند: Vazirmatn برای رابط فارسی و Manrope برای متن انگلیسی. چون فایل دارای مجوز و قابل اتکایی از Peyda در مخزن موجود نبود، عنوان‌های نمایشی از زنجیره امن `Peyda, Vazirmatn` استفاده می‌کنند و بدون شکستن build به Vazirmatn برمی‌گردند.
+
+## استقرار CMS مدیریت
+Migration جدید `004_complete_admin_content_management.sql` باید بعد از migrationهای قبلی در Supabase اجرا شود. این migration لاین‌های اولیه tenant دمو، فیلد وضعیت تصویر، ایندکس‌ها، RLS تکمیلی و bucketهای `style-references` (خصوصی) و `salon-portfolio` (خواندن عمومی، نوشتن tenant-aware) را آماده می‌کند. اگر migration با CLI اجرا نشود، باید فایل در SQL Editor به‌صورت دستی اجرا شود؛ ساخت جداگانه bucket یا policy لازم نیست.
+
+کاربر Owner موجود در Auth باید دقیقاً یک ردیف فعال در `tenant_users` با `tenant_id` سالن و role برابر `owner` داشته باشد. مسیر فایل‌ها به‌ترتیب `{tenant_id}/{service_line}/{reference_id}/{filename}` و `{tenant_id}/{service_line}/{portfolio_item_id}/{filename}` است و RLS مالکیت پوشه را با عضویت tenant کنترل می‌کند.
