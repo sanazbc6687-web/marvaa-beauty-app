@@ -2,7 +2,7 @@
 
 export type AuthSession={access_token:string;refresh_token:string;expires_at?:number;user:{id:string;email?:string}};
 const url=process.env.NEXT_PUBLIC_SUPABASE_URL;
-const key=process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+const key=process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY||process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 export const isSupabaseConfigured=Boolean(url&&key);
 const sessionKey="marvaa.admin.session";
 
@@ -19,4 +19,6 @@ export async function signIn(email:string,password:string){const session=await r
 export async function signOut(){const session=getStoredSession();if(session)await request("/auth/v1/logout",{method:"POST"},session.access_token).catch(()=>undefined);storeSession(null)}
 export async function rest<T>(table:string,init:RequestInit={}){const session=getStoredSession();if(!session)throw new Error("AUTH_REQUIRED");return request<T>(`/rest/v1/${table}`,init,session.access_token)}
 export async function upload(bucket:string,path:string,file:File){const session=getStoredSession();if(!url||!key||!session)throw new Error("AUTH_REQUIRED");const response=await fetch(`${url}/storage/v1/object/${bucket}/${path}`,{method:"POST",headers:{apikey:key,Authorization:`Bearer ${session.access_token}`,"Content-Type":file.type,"x-upsert":"false"},body:file});if(!response.ok)throw new Error("UPLOAD_FAILED");return path}
-
+export async function removeStorage(bucket:string,paths:string[]){const session=getStoredSession();if(!url||!key||!session)throw new Error("AUTH_REQUIRED");if(!paths.length)return;const response=await fetch(`${url}/storage/v1/object/${bucket}`,{method:"DELETE",headers:{apikey:key,Authorization:`Bearer ${session.access_token}`,"Content-Type":"application/json"},body:JSON.stringify({prefixes:paths})});if(!response.ok)throw new Error("DELETE_FAILED")}
+export function publicStorageUrl(bucket:string,path:string){return `${url}/storage/v1/object/public/${bucket}/${path}`}
+export async function signedStorageUrl(bucket:string,path:string){const result=await request<{signedURL:string}>(`/storage/v1/object/sign/${bucket}/${path}`,{method:"POST",body:JSON.stringify({expiresIn:3600})},getStoredSession()?.access_token);return `${url}/storage/v1${result.signedURL}`}
