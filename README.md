@@ -49,4 +49,6 @@ Reference Library ابتدا optionها را به تصاویر و قوانین �
 ## استقرار CMS مدیریت
 Migration جدید `004_complete_admin_content_management.sql` باید بعد از migrationهای قبلی در Supabase اجرا شود. این migration لاین‌های اولیه tenant دمو، فیلد وضعیت تصویر، ایندکس‌ها، RLS تکمیلی و bucketهای `style-references` (خصوصی) و `salon-portfolio` (خواندن عمومی، نوشتن tenant-aware) را آماده می‌کند. اگر migration با CLI اجرا نشود، باید فایل در SQL Editor به‌صورت دستی اجرا شود؛ ساخت جداگانه bucket یا policy لازم نیست.
 
+Migration `006_admin_reference_library_privileges.sql` بعد از `005` اجرا می‌شود و privilegeهای حداقلی Admin Reference Library را اضافه می‌کند. اگر deploy به‌صورت خودکار migrationهای Supabase را push نمی‌کند، این فایل باید پیش از deploy در SQL Editor اجرا شود. RLS و بررسی عضویت `tenant_users` بدون تغییر باقی می‌مانند.
+
 کاربر Owner موجود در Auth باید دقیقاً یک ردیف فعال در `tenant_users` با `tenant_id` سالن و role برابر `owner` داشته باشد. مسیر فایل‌ها به‌ترتیب `{tenant_id}/{service_line}/{reference_id}/{filename}` و `{tenant_id}/{service_line}/{portfolio_item_id}/{filename}` است و RLS مالکیت پوشه را با عضویت tenant کنترل می‌کند.
