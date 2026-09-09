@@ -94,6 +94,17 @@ test("image upload, metadata updates, reorder, replace, and delete stay tenant s
 
 
 const adminMigration = read("supabase/migrations/007_complete_admin_management_privileges.sql");
+const publicLeadMigration = read("supabase/migrations/008_allow_demo_public_lead_insert.sql");
+
+test("public lead creation is insert-only and restricted to the demo tenant", () => {
+  assert.match(publicLeadMigration, /grant insert \([\s\S]*?tenant_id[\s\S]*?status[\s\S]*?\) on table public\.leads to anon/i);
+  assert.doesNotMatch(publicLeadMigration, /grant (?:select|update|delete|all)[^;]*public\.leads/i);
+  assert.match(publicLeadMigration, /on public\.leads\s+for insert to anon/i);
+  assert.match(publicLeadMigration, /status = 'new'/i);
+  assert.match(publicLeadMigration, /00000000-0000-0000-0000-000000000001/i);
+  assert.match(publicLeadMigration, /is_valid_demo_public_lead_context\(tenant_id, session_id, service_category_id\)/i);
+  assert.doesNotMatch(publicLeadMigration, /service_role|disable row level security/i);
+});
 
 test("customer tables retain canonical tenant isolation and minimum grants", () => {
   const policies = read("supabase/migrations/004_complete_admin_content_management.sql") + read("supabase/migrations/001_initial_schema.sql");
