@@ -22,6 +22,7 @@ async function rawRequest<T>(path:string,init:RequestInit={},token?:string):Prom
 }
 
 export function publicRequest<T>(path:string,init:RequestInit={}){return rawRequest<T>(path,init)}
+export async function publicUpload(bucket:string,path:string,file:Blob){await rawRequest(`/storage/v1/object/${bucket}/${path}`,{method:"POST",headers:{"Content-Type":file.type||"application/octet-stream","x-upsert":"false"},body:file});return path}
 
 export function getStoredSession():AuthSession|null{if(typeof window==="undefined")return null;try{return JSON.parse(localStorage.getItem(sessionKey)||"null")}catch{return null}}
 function storeSession(session:AuthSession|null){if(session){if(!session.expires_at&&session.expires_in)session.expires_at=Math.floor(Date.now()/1000)+session.expires_in;localStorage.setItem(sessionKey,JSON.stringify(session));document.cookie=`marvaa-admin-token=${encodeURIComponent(session.access_token)}; Path=/; SameSite=Lax; Secure; Max-Age=${session.expires_in||3600}`}else{localStorage.removeItem(sessionKey);document.cookie="marvaa-admin-token=; Path=/; Max-Age=0"}}
