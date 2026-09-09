@@ -21,6 +21,8 @@ async function rawRequest<T>(path:string,init:RequestInit={},token?:string):Prom
  return body as T;
 }
 
+export function publicRequest<T>(path:string,init:RequestInit={}){return rawRequest<T>(path,init)}
+
 export function getStoredSession():AuthSession|null{if(typeof window==="undefined")return null;try{return JSON.parse(localStorage.getItem(sessionKey)||"null")}catch{return null}}
 function storeSession(session:AuthSession|null){if(session){if(!session.expires_at&&session.expires_in)session.expires_at=Math.floor(Date.now()/1000)+session.expires_in;localStorage.setItem(sessionKey,JSON.stringify(session));document.cookie=`marvaa-admin-token=${encodeURIComponent(session.access_token)}; Path=/; SameSite=Lax; Secure; Max-Age=${session.expires_in||3600}`}else{localStorage.removeItem(sessionKey);document.cookie="marvaa-admin-token=; Path=/; Max-Age=0"}}
 let refreshPromise:Promise<AuthSession>|null=null;
@@ -30,7 +32,7 @@ async function authenticatedRequest<T>(path:string,init:RequestInit={}){
  if(session.expires_at&&session.expires_at*1000<=Date.now()+30_000)session=await refreshSession(session);
  try{return await rawRequest<T>(path,init,session.access_token)}catch(error){if(error instanceof SupabaseRequestError&&error.status===401&&session.refresh_token){session=await refreshSession(session);return rawRequest<T>(path,init,session.access_token)}throw error}
 }
-export function logSupabaseError(operation:string,error:unknown){if(error instanceof SupabaseRequestError)console.error(`[Supabase] ${operation} failed`,{code:error.code,message:error.message,details:error.details,hint:error.hint,status:error.status,path:error.path});else console.error(`[Supabase] ${operation} failed`,error)}
+export function logSupabaseError(operation:string,error:unknown){if(error instanceof SupabaseRequestError)console.error(`[Supabase] ${operation} failed`,{code:error.code,message:error.message,details:error.details,hint:error.hint,httpStatus:error.status,failingPath:error.path});else console.error(`[Supabase] ${operation} failed`,error)}
 export async function signIn(email:string,password:string){const session=await rawRequest<AuthSession>("/auth/v1/token?grant_type=password",{method:"POST",body:JSON.stringify({email,password})});storeSession(session);return session}
 export async function signOut(){const session=getStoredSession();if(session)await rawRequest("/auth/v1/logout",{method:"POST"},session.access_token).catch(error=>logSupabaseError("sign out",error));storeSession(null)}
 export async function rest<T>(table:string,init:RequestInit={}){return authenticatedRequest<T>(`/rest/v1/${table}`,init)}
