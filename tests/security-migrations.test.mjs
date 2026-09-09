@@ -37,3 +37,57 @@ test("the pilot migration contains the ten existing style references", () => {
     "lip-shading", "almond-nails", "half-up", "icy-hair", "red-nails",
   ]);
 });
+
+test("reference library grants match every table and operation used by the page", () => {
+  const migration = read("supabase/migrations/006_admin_reference_library_privileges.sql");
+
+  assert.match(migration, /grant select \(id, slug, name_fa, title, tenant_id, enabled, sort_order\)\s+on table public\.service_categories to authenticated/i);
+  assert.match(migration, /grant select \([\s\S]*?\) on table public\.style_references to authenticated/i);
+  assert.match(migration, /grant insert \([\s\S]*?\) on table public\.style_references to authenticated/i);
+  assert.match(migration, /grant update \([\s\S]*?\) on table public\.style_references to authenticated/i);
+  assert.doesNotMatch(migration, /grant delete on table public\.style_references/i);
+  assert.match(migration, /grant select \([^)]*style_reference_id[^)]*\)\s+on table public\.style_reference_images to authenticated/i);
+  assert.match(migration, /grant insert \([\s\S]*?\) on table public\.style_reference_images to authenticated/i);
+  assert.match(migration, /grant update \([\s\S]*?\) on table public\.style_reference_images to authenticated/i);
+  assert.match(migration, /grant delete on table public\.style_reference_images to authenticated/i);
+  assert.match(migration, /grant select, insert, delete on table storage\.objects to authenticated/i);
+  assert.doesNotMatch(migration, /grant (?:all|update)[^;]*storage\.objects/i);
+});
+
+test("reference privileges are column-scoped and do not broaden unrelated CMS tables", () => {
+  const migration = read("supabase/migrations/006_admin_reference_library_privileges.sql");
+
+  for (const table of ["service_categories", "style_references"]) {
+    assert.doesNotMatch(migration, new RegExp(`grant (?:all|select|insert|update|delete) on table public\\.${table}`, "i"));
+  }
+  assert.doesNotMatch(migration, /public\.(?:service_options|recommendation_rules|portfolio_items|portfolio_images|leads|contact_requests)/i);
+  assert.doesNotMatch(migration, /service_role/i);
+  assert.doesNotMatch(migration, /disable row level security/i);
+});
+
+test("RLS and canonical tenant isolation cover database rows and private objects", () => {
+  const privileges = read("supabase/migrations/006_admin_reference_library_privileges.sql");
+  const membership = read("supabase/migrations/003_admin_reference_recommendations.sql");
+  const policies = read("supabase/migrations/001_initial_schema.sql") + read("supabase/migrations/002_future_mirror_v2.sql");
+
+  for (const table of ["service_categories", "style_references", "style_reference_images"]) {
+    assert.match(privileges, new RegExp(`alter table public\\.${table} enable row level security`, "i"));
+    assert.match(policies, new RegExp(`on ${table} for all using\\(is_tenant_member\\(tenant_id\\)\\) with check\\(is_tenant_member\\(tenant_id\\)\\)`, "i"));
+  }
+  assert.match(membership, /function is_tenant_member\(tid uuid\)[\s\S]*from tenant_users[\s\S]*user_id=auth\.uid\(\)[\s\S]*active/i);
+  assert.match(privileges, /alter table storage\.objects enable row level security/i);
+  assert.match(membership, /bucket_id='style-references' and is_tenant_member\(\(storage\.foldername\(name\)\)\[1\]::uuid\)/i);
+});
+
+test("image upload, metadata updates, reorder, replace, and delete stay tenant scoped", () => {
+  const manager = read("components/admin/ReferenceManager.tsx");
+
+  assert.match(manager, /const path=`\$\{tenant\}\/\$\{line\}\/\$\{item\.id\}\//);
+  assert.match(manager, /upload\("style-references",path,file\)/);
+  assert.match(manager, /style_reference_images\?style_reference_id=eq\.\$\{item\.id\}/);
+  assert.match(manager, /style_reference_images\?id=eq\.\$\{image\.id\}[\s\S]*JSON\.stringify\(value\)/);
+  assert.match(manager, /sort_order:other\.sort_order/);
+  assert.match(manager, /storage_path:path,image_url:path,public_url_or_signed_path:path/);
+  assert.match(manager, /removeStorage\("style-references",\[image\.storage_path\]\)/);
+  assert.match(manager, /style_reference_images\?id=eq\.\$\{image\.id\}[\s\S]*method:"DELETE"/);
+});
