@@ -7,6 +7,14 @@ grant insert (
   service_category_id, selected_options, status
 ) on table public.leads to anon;
 
+drop policy if exists "public reads enabled service names" on public.service_categories;
+create policy "public reads enabled service names" on public.service_categories
+for select to anon
+using (
+  tenant_id = '00000000-0000-0000-0000-000000000001'::uuid
+  and enabled = true
+);
+
 create or replace function public.is_valid_demo_public_lead_context(
   requested_tenant_id uuid,
   requested_session_id uuid,
