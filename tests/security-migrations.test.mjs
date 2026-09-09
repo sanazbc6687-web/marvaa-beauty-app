@@ -75,7 +75,7 @@ test("RLS and canonical tenant isolation cover database rows and private objects
     assert.match(policies, new RegExp(`on ${table} for all using\\(is_tenant_member\\(tenant_id\\)\\) with check\\(is_tenant_member\\(tenant_id\\)\\)`, "i"));
   }
   assert.match(membership, /function is_tenant_member\(tid uuid\)[\s\S]*from tenant_users[\s\S]*user_id=auth\.uid\(\)[\s\S]*active/i);
-  assert.match(privileges, /alter table storage\.objects enable row level security/i);
+  assert.doesNotMatch(privileges, /alter table storage\.objects enable row level security/i);
   assert.match(membership, /bucket_id='style-references' and is_tenant_member\(\(storage\.foldername\(name\)\)\[1\]::uuid\)/i);
 });
 
@@ -90,4 +90,53 @@ test("image upload, metadata updates, reorder, replace, and delete stay tenant s
   assert.match(manager, /storage_path:path,image_url:path,public_url_or_signed_path:path/);
   assert.match(manager, /removeStorage\("style-references",\[image\.storage_path\]\)/);
   assert.match(manager, /style_reference_images\?id=eq\.\$\{image\.id\}[\s\S]*method:"DELETE"/);
+});
+
+
+const adminMigration = read("supabase/migrations/007_complete_admin_management_privileges.sql");
+
+test("customer tables retain canonical tenant isolation and minimum grants", () => {
+  const policies = read("supabase/migrations/004_complete_admin_content_management.sql") + read("supabase/migrations/001_initial_schema.sql");
+  for (const table of ["leads", "image_generations", "contact_requests"]) {
+    assert.match(adminMigration, new RegExp(`grant select \\([\\s\\S]*?\\) on table public\\.${table} to authenticated`, "i"));
+    assert.match(adminMigration, new RegExp(`alter table public\\.${table} enable row level security`, "i"));
+    assert.match(policies, new RegExp(`(?:members|tenant members) manage (?:leads|generations|requests)\\"? on ${table}[\\s\\S]*is_tenant_member\\(tenant_id\\)`, "i"));
+  }
+  assert.match(adminMigration, /grant update \(status\) on table public\.leads to authenticated/i);
+  assert.doesNotMatch(adminMigration, /grant (?:all|insert|delete) on table public\.(?:leads|image_generations|contact_requests)/i);
+});
+
+test("portfolio grants and policies cover every operation without crossing tenants", () => {
+  const policies = read("supabase/migrations/002_future_mirror_v2.sql") + read("supabase/migrations/003_admin_reference_recommendations.sql");
+  for (const table of ["portfolio_items", "portfolio_images"]) {
+    for (const operation of ["select", "insert", "update"]) assert.match(adminMigration, new RegExp(`grant ${operation} \\([\\s\\S]*?\\)\\s*on table public\\.${table} to authenticated`, "i"));
+    assert.match(adminMigration, new RegExp(`grant delete on table public\\.${table} to authenticated`, "i"));
+    assert.match(policies, new RegExp(`members manage portfolio(?: images)?\\" on ${table} for all using\\(is_tenant_member\\(tenant_id\\)\\)`, "i"));
+  }
+  assert.match(policies, /bucket_id='salon-portfolio' and is_tenant_member\(\(storage\.foldername\(name\)\)\[1\]::uuid\)/i);
+});
+
+test("service editing is column-limited and tenant scoped", () => {
+  const policies = read("supabase/migrations/001_initial_schema.sql");
+  assert.match(adminMigration, /grant update \(name_fa, name_en, enabled, sort_order\)\s*on table public\.service_categories to authenticated/i);
+  assert.doesNotMatch(adminMigration, /grant (?:all|insert|delete) on table public\.service_categories/i);
+  assert.match(policies, /members manage categories" on service_categories for all using\(is_tenant_member\(tenant_id\)\)/i);
+});
+
+test("new admin migration keeps storage and roles safe", () => {
+  assert.doesNotMatch(adminMigration, /service_role/i);
+  assert.doesNotMatch(adminMigration, /disable row level security/i);
+  assert.doesNotMatch(adminMigration, /alter table storage\.objects enable row level security/i);
+  assert.doesNotMatch(adminMigration, /grant all/i);
+  assert.match(adminMigration, /'customer-simulations','customer-simulations',false/i);
+  assert.match(adminMigration, /bucket_id='customer-simulations'[\s\S]*is_tenant_member\(\(storage\.foldername\(name\)\)\[1\]::uuid\)/i);
+});
+
+test("reference library implementation and grants remain unchanged", () => {
+  const manager = read("components/admin/ReferenceManager.tsx");
+  const grants = read("supabase/migrations/006_admin_reference_library_privileges.sql");
+  assert.match(manager, /signedStorageUrl\("style-references",i\.storage_path\)/);
+  assert.match(manager, /upload\("style-references",path,file\)/);
+  assert.match(grants, /grant select, insert, delete on table storage\.objects to authenticated/i);
+  assert.doesNotMatch(adminMigration, /style_references|style_reference_images/);
 });
