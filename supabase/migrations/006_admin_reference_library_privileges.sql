@@ -48,4 +48,3 @@ grant select, insert, delete on table storage.objects to authenticated;
 alter table public.service_categories enable row level security;
 alter table public.style_references enable row level security;
 alter table public.style_reference_images enable row level security;
-alter table storage.objects enable row level security;
