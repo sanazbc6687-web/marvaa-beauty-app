@@ -1,1 +1,1 @@
-import { AdminShell } from "@/components/admin/AdminShell";import { LeadManager } from "@/components/admin/LeadManager";export default function Page(){return <AdminShell title="لیدها و مشتریان" subtitle="پیگیری درخواست‌ها و وضعیت مشاوره"><LeadManager/></AdminShell>}
+import { AdminShell } from "@/components/admin/AdminShell";import { LeadManager } from "@/components/admin/LeadManager";export default function Page(){return <AdminShell title="مدیریت مشتریان" subtitle="اطلاعات تماس، درخواست‌ها و تاریخچه شبیه‌سازی هر مشتری"><LeadManager/></AdminShell>}
