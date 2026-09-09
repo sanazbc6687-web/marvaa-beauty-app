@@ -95,6 +95,7 @@ test("image upload, metadata updates, reorder, replace, and delete stay tenant s
 
 const adminMigration = read("supabase/migrations/007_complete_admin_management_privileges.sql");
 const publicLeadMigration = read("supabase/migrations/008_allow_demo_public_lead_insert.sql");
+const publicSimulationMigration = read("supabase/migrations/009_persist_public_simulation_history.sql");
 
 test("public lead creation is insert-only and restricted to the demo tenant", () => {
   assert.match(publicLeadMigration, /grant insert \([\s\S]*?tenant_id[\s\S]*?status[\s\S]*?\) on table public\.leads to anon/i);
@@ -150,4 +151,24 @@ test("reference library implementation and grants remain unchanged", () => {
   assert.match(manager, /upload\("style-references",path,file\)/);
   assert.match(grants, /grant select, insert, delete on table storage\.objects to authenticated/i);
   assert.doesNotMatch(adminMigration, /style_references|style_reference_images/);
+});
+
+test("public simulations are insert-only, demo-scoped, and keep customer images private", () => {
+  assert.match(publicSimulationMigration, /grant insert \(id, tenant_id, session_id, category_id, path, selections\)[\s\S]*public\.user_choices to anon/i);
+  assert.match(publicSimulationMigration, /grant insert \(id, tenant_id, session_id, choice_id, input_path, status, metadata\)[\s\S]*public\.image_generations to anon/i);
+  assert.doesNotMatch(publicSimulationMigration, /grant (?:select|update|delete|all)[^;]*public\.(?:anonymous_sessions|user_choices|image_generations|leads)/i);
+  assert.match(publicSimulationMigration, /bucket_id = 'customer-simulations'[\s\S]*is_valid_demo_simulation_object\(name\)/i);
+  assert.match(publicSimulationMigration, /foldername\(object_name\)\)\[3\] = 'input'/i);
+  assert.match(publicSimulationMigration, /output_path is null/i);
+  assert.doesNotMatch(publicSimulationMigration, /service_role|disable row level security|public\s*=\s*true/i);
+});
+
+test("simulation and lead creation share the persistent public session helper", () => {
+  const simulation = read("lib/simulation/service.ts");
+  const lead = read("lib/leads/public.ts");
+  assert.match(simulation, /getOrCreatePublicSession\(input\.tenantId\)/);
+  assert.match(lead, /getOrCreatePublicSession\(input\.tenantId\)/);
+  assert.doesNotMatch(lead, /crypto\.randomUUID/);
+  assert.match(simulation, /customer-simulations/);
+  assert.match(simulation, /output_path null/);
 });
