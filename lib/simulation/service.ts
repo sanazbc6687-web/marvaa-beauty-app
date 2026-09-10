@@ -3,7 +3,7 @@ import { buildBeautyPrompt, IDENTITY_RULES } from "./prompt-builder";
 import {logSupabaseError, publicRequest, publicUpload} from "../supabase/client";
 import {getOrCreatePublicSession} from "./public-session";
 export type SimulationInput={images:GenerationImageInputs;tenantId:string;serviceCategory:string;selectedOptions:Record<string,string>;selectedReferences:(StyleReference|string)[];recommendationMode?:RecommendationMode;identityPreservationInstructions?:string[]};
-export type SimulationResult={generatedImageUrl:string;status:"completed"|"failed";metadata:{provider:"mock";prompt:string;tenantId:string;createdAt:string};referencesUsed:string[]};
+export type SimulationResult={generationId:string;sessionId:string;generatedImageUrl:string;status:"completed"|"failed";metadata:{provider:"mock";prompt:string;tenantId:string;createdAt:string};referencesUsed:string[]};
 export async function generateBeautySimulation(input:SimulationInput):Promise<SimulationResult>{
  const hydrated=input.selectedReferences.filter((x):x is StyleReference=>typeof x!=="string");
  const metadata={provider:"mock" as const,tenantId:input.tenantId,prompt:buildBeautyPrompt({serviceCategory:input.serviceCategory,selectedOptions:input.selectedOptions,selectedReferences:hydrated,recommendationMode:input.recommendationMode,identityPreservationInstructions:input.identityPreservationInstructions||IDENTITY_RULES}),createdAt:new Date().toISOString()};
@@ -17,7 +17,7 @@ export async function generateBeautySimulation(input:SimulationInput):Promise<Si
  // The mock has no generated asset. Keeping output_path null avoids treating the input as an AI result.
  try{await publicRequest("/rest/v1/image_generations",{method:"POST",headers:{Prefer:"return=minimal"},body:JSON.stringify({id:generationId,tenant_id:input.tenantId,session_id:sessionId,choice_id:choiceId,input_path:inputPath,status:"completed",metadata:{...metadata,mockOutput:true}})})}catch(error){logSupabaseError("create public image generation",error);throw error}
  await new Promise(r=>setTimeout(r,2200));
- return{generatedImageUrl:input.images.primaryImage.dataUrl,status:"completed",metadata,referencesUsed:input.selectedReferences.map(x=>typeof x==="string"?x:x.id)}
+ return{generationId,sessionId,generatedImageUrl:input.images.primaryImage.dataUrl,status:"completed",metadata,referencesUsed:input.selectedReferences.map(x=>typeof x==="string"?x:x.id)}
 }
 
 async function resolveCategory(tenantId:string,slug:string){
@@ -30,4 +30,11 @@ async function resolveCategory(tenantId:string,slug:string){
 function dataUrlToBlob(dataUrl:string){
  const match=/^data:([^;,]+);base64,(.+)$/.exec(dataUrl);if(!match)throw new Error("INVALID_SIMULATION_IMAGE");
  const bytes=Uint8Array.from(atob(match[2]),character=>character.charCodeAt(0));return new Blob([bytes],{type:match[1]});
+}
+
+export async function favoriteBeautySimulation(tenantId:string,sessionId:string,generationId:string){
+ try{
+  const liked=await publicRequest<boolean>("/rest/v1/rpc/like_demo_public_generation",{method:"POST",body:JSON.stringify({requested_tenant_id:tenantId,requested_session_id:sessionId,requested_generation_id:generationId})});
+  if(!liked)throw new Error("FAVORITE_NOT_ALLOWED");
+ }catch(error){logSupabaseError("favorite public image generation",error);throw error}
 }

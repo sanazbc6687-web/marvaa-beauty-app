@@ -23,3 +23,4 @@ html,body{font-family:var(--font-ui-fa)}
 .loading-mirror,.signature-mirror{position:relative;overflow:hidden}.mirror-button{transition:transform .2s,box-shadow .2s}.mirror-button:hover{transform:translateY(-1px);box-shadow:0 12px 35px #d8bd8230}.mirror-button:active{transform:translateY(1px)}
 @keyframes ambient-sweep{50%{background-position:100% 0}}@keyframes reflection{0%,25%{transform:translateX(80%)}65%,100%{transform:translateX(-80%)}}
 @media(max-width:700px){.assistant-presence{height:69svh;margin-inline:-24px}.assistant-id{right:34px;bottom:62px}.welcome-reveal{bottom:4svh}.welcome-reveal h1{font-size:30px}.service-grid .mirror-tile{min-height:92px}.stage{overflow-x:hidden}.capture{border-radius:44% 44% 18px 18px}}
+.favorite-feedback{padding:10px 12px;border:1px solid #d8bd8255;border-radius:11px;background:#d8bd8210;color:var(--accent);font-size:11px;text-align:center}
