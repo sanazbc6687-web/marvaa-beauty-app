@@ -18,6 +18,7 @@ export type BeautyImageResponse = { bytes: Uint8Array; contentType: "image/png";
 export interface BeautyImageProvider { generate(input: BeautyImageRequest): Promise<BeautyImageResponse> }
 
 type FetchLike = typeof fetch;
+const OPENAI_IMAGE_MODEL = "gpt-image-2";
 
 /** Server-only GPT Image editor. Image order is part of the prompt contract: identity, details, then style. */
 export class OpenAIBeautyImageProvider implements BeautyImageProvider {
@@ -26,7 +27,7 @@ export class OpenAIBeautyImageProvider implements BeautyImageProvider {
   async generate(input: BeautyImageRequest): Promise<BeautyImageResponse> {
     if (!this.apiKey) throw new Error("OPENAI_NOT_CONFIGURED");
     const form = new FormData();
-    form.set("model", "gpt-image-1.5");
+    form.set("model", OPENAI_IMAGE_MODEL);
     form.set("prompt", input.generationPrompt);
     form.set("input_fidelity", "high");
     form.set("quality", "high");
@@ -46,7 +47,7 @@ export class OpenAIBeautyImageProvider implements BeautyImageProvider {
     const result = await response.json() as { data?: { b64_json?: string }[] };
     const encoded = result.data?.[0]?.b64_json;
     if (!encoded) throw new Error("OPENAI_IMAGE_EMPTY_RESULT");
-    return { bytes: Uint8Array.from(Buffer.from(encoded, "base64")), contentType: "image/png", provider: "openai", model: "gpt-image-1.5" };
+    return { bytes: Uint8Array.from(Buffer.from(encoded, "base64")), contentType: "image/png", provider: "openai", model: OPENAI_IMAGE_MODEL };
   }
 }
 
