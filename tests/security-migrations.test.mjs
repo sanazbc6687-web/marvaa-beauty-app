@@ -165,12 +165,14 @@ test("public simulations are insert-only, demo-scoped, and keep customer images 
 
 test("simulation and lead creation share the persistent public session helper", () => {
   const simulation = read("lib/simulation/service.ts");
+  const serverRoute = read("app/api/simulations/generate/route.ts");
   const lead = read("lib/leads/public.ts");
   assert.match(simulation, /getOrCreatePublicSession\(input\.tenantId\)/);
   assert.match(lead, /getOrCreatePublicSession\(input\.tenantId\)/);
   assert.doesNotMatch(lead, /crypto\.randomUUID/);
   assert.match(simulation, /customer-simulations/);
-  assert.match(simulation, /output_path null/);
+  assert.match(serverRoute, /output_path: null, provider: "openai", status: "pending"/);
+  assert.match(serverRoute, /output_path: outputPath, status: "completed"/);
 });
 
 const favoriteMobileMigration = read("supabase/migrations/010_public_favorites_and_mobile_validation.sql");
