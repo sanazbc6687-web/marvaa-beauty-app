@@ -34,14 +34,22 @@ npm run dev
 
 برای افزودن تصاویر Pilot، بعد از ورود به `/admin/references` ابتدا لاین خدمات، سپس گروه و گزینه را باز کنید؛ چند فایل را هم‌زمان انتخاب کنید، تصویر Primary را با ستاره تعیین و ترتیب را با فلش‌ها تنظیم کنید. فایل‌ها در bucket خصوصی `style-references` و مسیر `{tenant_id}/{service}/{reference}/{filename}` نگهداری می‌شوند. گالری واقعی سالن از مسیر `/admin/portfolio` و bucket عمومیِ فقط-خواندنی `salon-portfolio` مدیریت می‌شود و هرگز خودکار به رفرنس AI تبدیل نمی‌شود.
 
-## بخش‌های Mock / fallback
-تولید تصویر و تحلیل Beauty Profile همچنان Mock هستند و هیچ API پولی فراخوانی نمی‌شود. بدون متغیرهای Supabase، تجربه مشتری و build کامل با catalog محلی کار می‌کنند و صفحه ورود پیام تنظیمات نشان می‌دهد؛ ورود، آمار Admin و ذخیره دائمی عمداً ممکن نیست. پنل تولید هیچ داده جعلی نمایش نمی‌دهد.
+## تولید واقعی تصویر
+مسیر `/api/simulations/generate` فقط روی سرور اجرا می‌شود و با API ویرایش تصویر OpenAI و مدل `gpt-image-1.5` خروجی واقعی می‌سازد. این مسیر در لحظه اجرا، سرویس فعال، Beauty Profile، قوانین پیشنهاد فعال، رفرنس‌های فعال tenant و تصاویر فعال کتابخانه مدیریت را از Supabase می‌خواند؛ بنابراین تغییرات Admin بدون build یا deploy تازه در نسل بعد اعمال می‌شوند. خروجی باینری OpenAI بلافاصله در bucket خصوصی `customer-simulations` ذخیره و سپس رکورد `image_generations` تکمیل می‌شود؛ URL موقت OpenAI ذخیره نمی‌شود و شکست provider هرگز به‌عنوان نتیجه موفق ثبت نمی‌شود.
 
-## اتصال provider واقعی در آینده
-Reference Library ابتدا optionها را به تصاویر و قوانین مستقل تبدیل می‌کند. سپس `buildBeautyPrompt()` انتخاب کاربر، reference metadata و قوانین حفظ هویت را ترکیب می‌کند. provider واقعی باید پشت یک route امن سرور قرار بگیرد؛ کلید API فقط سرور باشد و تنها implementation سرویس generation جایگزین شود.
+در محیط سرور استقرار (برای نمونه Environment Variables پروژه Production در Vercel) این متغیرها الزامی‌اند:
+
+- `OPENAI_API_KEY`: کلید خصوصی OpenAI؛ هرگز نام آن را با `NEXT_PUBLIC_` شروع نکنید.
+- `SUPABASE_SERVICE_ROLE_KEY`: فقط برای route سرور جهت خواندن رفرنس خصوصی و persistence اتمیک؛ هرگز در مرورگر یا متغیر `NEXT_PUBLIC_*` قرار نگیرد.
+- `NEXT_PUBLIC_SUPABASE_URL` و publishable/anon key موجود همچنان برای قابلیت‌های عمومی و Admin لازم‌اند.
+
+اگر هر متغیر خصوصی سرور وجود نداشته باشد، route با پیام عمومی امن شکست می‌خورد و هیچ نتیجه جعلی نشان نمی‌دهد. Migration `011_real_image_generation_idempotency.sql` باید پیش از انتشار کد در Supabase اجرا شود تا شناسه درخواست یکتا مانع هزینه دوباره ناشی از درخواست تکراری شود.
+
+## اتصال Reference Library به provider
+Reference Library، optionها را به تصاویر و قوانین مستقل تبدیل می‌کند. `buildBeautyPrompt()` انتخاب کاربر، Beauty Profile، نتیجه recommendation، ruleهای جاری، reference metadata، قوانین تولید، محدودیت منفی و قوانین سخت حفظ هویت را در بخش‌های جدا ترکیب می‌کند. selector قطعی فقط یک تصویر فعال و اولویت‌دار برای هر purpose مرتبط را به provider می‌دهد تا رفرنس نامرتبط هویت یا درمان را آلوده نکند.
 
 ## V3: ورودی تصویر سرویس‌محور
-هر سرویس در `lib/catalog.ts` متادیتای `photoRequirements` مستقل دارد. ورودی provider به سه نقش صریح `primaryImage`، `detailImages` و `referenceImages` تقسیم شده است. ناخن از عکس دست استفاده می‌کند؛ ابرو، مژه و لب عکس کامل چهره را اصلی نگه می‌دارند و نمای نزدیک اختیاری است. provider همچنان کاملاً Mock است و هیچ API یا کلید پولی به پروژه اضافه نشده است.
+هر سرویس در `lib/catalog.ts` متادیتای `photoRequirements` مستقل دارد. ورودی provider به سه نقش صریح `primaryImage`، `detailImages` و `referenceImages` تقسیم شده است. ناخن از عکس دست استفاده می‌کند؛ ابرو، مژه و لب عکس کامل چهره را اصلی نگه می‌دارند و نمای نزدیک اختیاری است. provider واقعی فقط در route سرور import می‌شود و هیچ کلید خصوصی در bundle مرورگر قرار نمی‌گیرد.
 
 ## تایپوگرافی
 توکن‌های معنایی قلم در CSS تعریف شده‌اند: Vazirmatn برای رابط فارسی و Manrope برای متن انگلیسی. چون فایل دارای مجوز و قابل اتکایی از Peyda در مخزن موجود نبود، عنوان‌های نمایشی از زنجیره امن `Peyda, Vazirmatn` استفاده می‌کنند و بدون شکستن build به Vazirmatn برمی‌گردند.
