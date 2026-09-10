@@ -172,3 +172,49 @@ test("simulation and lead creation share the persistent public session helper", 
   assert.match(simulation, /customer-simulations/);
   assert.match(simulation, /output_path null/);
 });
+
+const favoriteMobileMigration = read("supabase/migrations/010_public_favorites_and_mobile_validation.sql");
+
+test("Iranian mobile validation normalizes local digits and enforces exactly 09 plus nine digits", () => {
+  const source = read("lib/leads/mobile.ts");
+  assert.match(source, /\^09\\d\{9\}\$/);
+  assert.match(source, /\[۰-۹\]/);
+  assert.match(source, /\[٠-٩\]/);
+  const normalize = value => value
+    .replace(/[۰-۹]/g, digit => String("۰۱۲۳۴۵۶۷۸۹".indexOf(digit)))
+    .replace(/[٠-٩]/g, digit => String("٠١٢٣٤٥٦٧٨٩".indexOf(digit)))
+    .replace(/[\s\-‐‑‒–—―−­​‌‍⁠·•٬،._()]/g, "");
+  const valid = value => /^09\d{9}$/.test(normalize(value));
+
+  assert.equal(valid("09123456789"), true);
+  assert.equal(valid("09901234567"), true);
+  assert.equal(valid("۰۹۱۲ ۳۴۵-۶۷۸۹"), true);
+  for (const invalid of ["9123456789", "08123456789", "0912345678", "091234567890", "09abc123456", "+989123456789"])
+    assert.equal(valid(invalid), false, invalid);
+});
+
+test("database rejects bypassed invalid mobiles without weakening lead RLS", () => {
+  assert.match(favoriteMobileMigration, /check \(mobile ~ '\^09\[0-9\]\{9\}\$'\) not valid/i);
+  assert.match(favoriteMobileMigration, /alter table public\.leads enable row level security/i);
+  assert.doesNotMatch(favoriteMobileMigration, /service_role|disable row level security|grant[^;]*(?:select|update|delete)[^;]*leads/i);
+});
+
+test("favorite updates current generation metadata idempotently without inserting a generation", () => {
+  const service = read("lib/simulation/service.ts");
+  assert.match(service, /rpc\/like_demo_public_generation/);
+  assert.match(service, /requested_session_id:sessionId/);
+  assert.match(favoriteMobileMigration, /set metadata = jsonb_set\([\s\S]*?'\{liked\}'[\s\S]*?'true'::jsonb/i);
+  assert.match(favoriteMobileMigration, /not \(coalesce\(metadata, '\{\}'::jsonb\) @> '\{"liked": true\}'::jsonb\)/i);
+  assert.doesNotMatch(favoriteMobileMigration, /insert into public\.image_generations/i);
+});
+
+test("favorite RPC and admin liked marker retain session, tenant, and privacy boundaries", () => {
+  const admin = read("components/admin/LeadManager.tsx");
+  assert.match(favoriteMobileMigration, /generation\.session_id = requested_session_id/i);
+  assert.match(favoriteMobileMigration, /requested_tenant_id <> '00000000-0000-0000-0000-000000000001'/i);
+  assert.match(favoriteMobileMigration, /revoke all on function public\.like_demo_public_generation[\s\S]*grant execute[^;]*to anon/i);
+  assert.doesNotMatch(favoriteMobileMigration, /grant[^;]*(?:select|update|delete)[^;]*image_generations/i);
+  assert.match(admin, /g\.metadata\?\.liked===true/);
+  assert.match(admin, /مورد علاقه مشتری/);
+  assert.match(admin, /signedStorageUrl\("customer-simulations",path\)/);
+});
