@@ -14,7 +14,15 @@ export async function serverRequest<T>(path: string, init: RequestInit = {}): Pr
     apikey: config.serviceKey, Authorization: `Bearer ${config.serviceKey}`, "Content-Type": "application/json", ...init.headers,
   }});
   const body = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(`SUPABASE_SERVER_REQUEST_FAILED_${response.status}`);
+if (!response.ok) {
+  console.error("SUPABASE_ERROR_DETAIL", {
+    status: response.status,
+    path,
+    responseBody: body,
+  });
+
+  throw new Error(`SUPABASE_SERVER_REQUEST_FAILED_${response.status}`);
+}
   return body as T;
 }
 
