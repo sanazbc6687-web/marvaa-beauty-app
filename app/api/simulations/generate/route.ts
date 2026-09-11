@@ -122,7 +122,41 @@ function engineMode(mode?: RecommendationMode): EngineMode { return mode === "na
 function referencePurpose(reference: StyleReference) { return String(reference.metadata.referencePurpose ?? reference.metadata.purpose ?? reference.referenceType); }
 function dataUrlBlob(value: string) { const match = /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/.exec(value); if (!match) throw new PublicGenerationError("INVALID_IMAGE", 400); const bytes = Buffer.from(match[2], "base64"); if (bytes.length > 10 * 1024 * 1024) throw new PublicGenerationError("IMAGE_TOO_LARGE", 413); return new Blob([bytes], { type: match[1] }); }
 function extension(type: string) { return type === "image/png" ? "png" : type === "image/webp" ? "webp" : "jpg"; }
-function validate(body: RequestBody) { if (!body || !UUID.test(body.requestId) || !UUID.test(body.sessionId) || !UUID.test(body.tenantId) || !body.images?.primaryImage || body.images.detailImages.length > 3 || Object.keys(body.selectedOptions ?? {}).length > 20) throw new PublicGenerationError("INVALID_REQUEST", 400); dataUrlBlob(body.images.primaryImage.dataUrl); body.images.detailImages.forEach(image => dataUrlBlob(image.dataUrl)); }
+function validate(body: RequestBody) {
+  if (!body) {
+    throw new PublicGenerationError("NO_BODY", 400);
+  }
+
+  if (!UUID.test(body.requestId)) {
+    throw new PublicGenerationError("BAD_REQUEST_ID", 400);
+  }
+
+  if (!UUID.test(body.sessionId)) {
+    throw new PublicGenerationError("BAD_SESSION_ID", 400);
+  }
+
+  if (!UUID.test(body.tenantId)) {
+    throw new PublicGenerationError("BAD_TENANT_ID", 400);
+  }
+
+  if (!body.images?.primaryImage) {
+    throw new PublicGenerationError("NO_PRIMARY_IMAGE", 400);
+  }
+
+  if (body.images.detailImages.length > 3) {
+    throw new PublicGenerationError("TOO_MANY_DETAIL_IMAGES", 400);
+  }
+
+  if (Object.keys(body.selectedOptions ?? {}).length > 20) {
+    throw new PublicGenerationError("TOO_MANY_OPTIONS", 400);
+  }
+
+  dataUrlBlob(body.images.primaryImage.dataUrl);
+
+  body.images.detailImages.forEach(image =>
+    dataUrlBlob(image.dataUrl)
+  );
+}
 function metadata(body: RequestBody, selected: ReturnType<typeof chooseReferences>, rules: RecommendationRule[], started: number) { return { provider: "openai", tenantId: body.tenantId, service: selected.category.slug, selectedOptionIds: Object.values(body.selectedOptions), recommendationMode: body.recommendationMode ? "recommendation" : "manual", recommendationIntensity: body.recommendationMode ?? null, recommendationRuleIds: rules.map(rule => rule.id), referenceIds: selected.references.map(reference => reference.id), referenceImageIds: selected.images.map(image => image.id), requestId: body.requestId, success: false, durationMs: Date.now() - started }; }
 function log(event: string, body: RequestBody, details: Record<string, unknown>) { console.info("[beauty-generation]", JSON.stringify({ event, tenantId: body.tenantId, service: details.service, selectedOptionIds: details.selectedOptionIds, recommendationMode: details.recommendationMode, recommendationRuleIds: details.recommendationRuleIds, referenceIds: details.referenceIds, referenceImageIds: details.referenceImageIds, provider: "openai", success: details.success, durationMs: details.durationMs })); }
 function duplicate(error: unknown) { return error instanceof Error && (error.message.includes("409") || error.message.includes("23505")); }
