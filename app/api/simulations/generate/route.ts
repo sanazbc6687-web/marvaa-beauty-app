@@ -69,7 +69,17 @@ export async function POST(request: Request) {
   } catch (error) {
     if (generationId) await serverRequest(`/rest/v1/image_generations?id=eq.${generationId}`, { method: "PATCH", body: JSON.stringify({ status: "failed", output_path: null, metadata: { success: false, durationMs: Date.now() - started } }) }).catch(() => undefined);
     const status = error instanceof PublicGenerationError ? error.status : duplicate(error) ? 409 : 500;
-    console.error("[beauty-generation]", JSON.stringify({ event: "failure", tenantId: body?.tenantId, service: body?.serviceCategory, requestId: body?.requestId, generationId, durationMs: Date.now() - started, errorCode: safeCode(error) }));
+console.error("[beauty-generation]", JSON.stringify({
+  event: "failure",
+  tenantId: body?.tenantId,
+  service: body?.serviceCategory,
+  requestId: body?.requestId,
+  generationId,
+  durationMs: Date.now() - started,
+  errorCode: safeCode(error),
+  rawError: error instanceof Error ? error.message : String(error),
+  stack: error instanceof Error ? error.stack : undefined
+}));
     return NextResponse.json({ error: status === 409 ? "DUPLICATE_GENERATION" : "GENERATION_FAILED", message: FRIENDLY_ERROR }, { status });
   }
 }
