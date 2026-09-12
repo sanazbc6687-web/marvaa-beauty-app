@@ -1,5 +1,17 @@
 import { Decision, PhotoRequirement, Service, StyleOption } from "./types";
-const o=(id:string,nameFa:string,nameEn:string,group?:string):StyleOption=>({id,nameFa,nameEn,group,active:true,sortOrder:0,referenceId:id,promptFragment:`Apply the distinct ${nameEn} style exactly as shown by its references.`,generationRules:["Modify only the selected service area","Preserve identity and unselected features"]});
+const referenceIdMap: Record<string, string> = {
+  balayage: "balayage",
+  icy: "icy-hair",
+  "graduated-bob": "graduated-bob",
+  spiky: "spiky-lashes",
+  microblading: "microblading",
+  "lip-blush": "lip-shading",
+  almond: "almond-nails",
+  "red-nail": "red-nails",
+  "half-open": "half-up",
+  light: "light-makeup",
+};
+const o=(id:string,nameFa:string,nameEn:string,group?:string):StyleOption=>({id,nameFa,nameEn,group,active:true,sortOrder:0,referenceId: referenceIdMap[id] ?? id,promptFragment:`Apply the distinct ${nameEn} style exactly as shown by its references.`,generationRules:["Modify only the selected service area","Preserve identity and unselected features"]});
 const d=(id:string,nameFa:string,nameEn:string,questionFa:string,options:StyleOption[],groups?:{id:string;nameFa:string;nameEn:string;options:StyleOption[]}[]):Decision=>({id,nameFa,nameEn,questionFa,questionEn:nameEn,groups:groups||[{id, nameFa,nameEn,options}]});
 const faceGuidance=[{id:"light",nameFa:"نور مناسب",nameEn:"Good light"},{id:"clear",nameFa:"صورت واضح",nameEn:"Clear face"},{id:"no-filter",nameFa:"بدون فیلتر",nameEn:"No filter"},{id:"front",nameFa:"چهره روبه‌رو",nameEn:"Front-facing"}];
 const face=(detailTypes:PhotoRequirement["detailTypes"]=[]):PhotoRequirement=>({primaryType:"face",required:true,detailTypes,guidance:faceGuidance,optionalDetailImages:detailTypes.length>0,identityPreservationRules:["Preserve full facial identity","Keep the final output as a full-face image","Change only the selected service area"]});
