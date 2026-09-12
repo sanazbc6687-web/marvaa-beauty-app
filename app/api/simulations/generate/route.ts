@@ -1,36 +1,5 @@
 import { NextResponse } from "next/server";
-const referenceSlugByOptionId: Record<string, string> = {
-  balayage: "balayage",
-  icy: "icy-hair",
-  spiky: "spiky-lashes",
-  "graduated-bob": "graduated-bob",
-  light: "light-makeup",
-  microblading: "microblading",
-  "lip-blush": "lip-shading",
-  almond: "almond-nails",
-  "half-open": "half-up",
-  "red-nail": "red-nails",
-};
-
-const o = (
-  id: string,
-  nameFa: string,
-  nameEn: string,
-  group?: string
-): StyleOption => ({
-  id,
-  nameFa,
-  nameEn,
-  group,
-  active: true,
-  sortOrder: 0,
-  referenceId: referenceSlugByOptionId[id] ?? id,
-  promptFragment: `Apply the distinct ${nameEn} style exactly as shown by its references.`,
-  generationRules: [
-    "Modify only the selected service area",
-    "Preserve identity and unselected features",
-  ],
-});
+import type { BeautyProfile, RecommendationMode as EngineMode } from "@/lib/recommendation/analysis-types";
 import { recommend } from "@/lib/recommendation/recommendation-engine";
 import type { RecommendationRule } from "@/lib/recommendation/recommendation-rules";
 import { selectGenerationReferences } from "@/lib/references/selector";
