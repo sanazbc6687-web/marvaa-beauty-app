@@ -28,15 +28,17 @@ function getVisibleChangeInstruction(
 
   if (serviceCategory === "makeup") {
     if (selected.includes("light")) {
-      return [
-        "LIGHT MAKEUP MUST BE CLEARLY VISIBLE while remaining natural and elegant.",
-        "Do not return the customer's original face unchanged.",
-        "Apply a professional light makeup result visibly inspired by the salon reference image.",
-        "Create an even and refined complexion while preserving realistic skin texture.",
-        "Add subtle neutral eye definition, clearly defined lashes, softly refined brows, gentle blush, and natural soft lip color.",
-        "The before/after difference must be noticeable at first glance, but still look like professional light makeup, not heavy glam.",
-      ].join(" ");
-    }
+  return [
+    "LIGHT MAKEUP MUST BE CLEARLY VISIBLE while remaining natural and elegant.",
+    "Do not return the customer's original face unchanged.",
+    "Apply the selected salon reference makeup style to the customer, not generic beautification.",
+    "Use the salon reference image as the primary visual guide for the makeup treatment.",
+    "Match the reference image as closely as possible in makeup placement, complexion finish, eye definition, lash definition, brow refinement, blush placement, and lip tone.",
+    "Create an even and refined complexion while preserving realistic skin texture.",
+    "The before/after difference must be clearly noticeable at first glance while remaining professional light makeup, not heavy glam.",
+    "The final image must show the exact same customer wearing the makeup style demonstrated by the salon reference image."
+  ].join(" ");
+}
 
     return "Apply the selected makeup style as a clearly visible professional makeup transformation. Do not return the original face unchanged.";
   }
