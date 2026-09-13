@@ -64,7 +64,13 @@ export class OpenAIBeautyImageProvider implements BeautyImageProvider {
 
       form.append("image[]", await refResponse.blob(), `style-${index}.png`);
     }
-
+console.log("[PROVIDER_DEBUG]", {
+  customerImageCount: assets.length,
+  referenceImageCount: input.selectedReferenceImages.length,
+  referenceImageIds: input.selectedReferenceImages.map(x => x.id),
+  referenceImageUrls: input.selectedReferenceImages.map(x => x.imageUrl),
+  selectedReferenceIds: input.selectedReferences.map(x => x.id),
+});
     const response = await this.fetcher("https://api.openai.com/v1/images/edits", {
       method: "POST",
       headers: {
