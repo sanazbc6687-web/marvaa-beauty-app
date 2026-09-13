@@ -20,7 +20,44 @@ const isolation: Record<string, string> = {
   lip: "Change ONLY the selected lip treatment/color. Preserve lip volume and geometry, face identity, skin, makeup outside lips, and background.",
   updo: "Change ONLY hairstyle arrangement as selected. Preserve hair color, face identity, makeup, skin, clothes, and background.",
 };
+function getVisibleChangeInstruction(
+  serviceCategory: string,
+  selectedOptions: Record<string, string>
+) {
+  const selected = Object.values(selectedOptions);
 
+  if (serviceCategory === "makeup") {
+    if (selected.includes("light")) {
+      return [
+        "LIGHT MAKEUP MUST BE CLEARLY VISIBLE while remaining natural and elegant.",
+        "Do not return the customer's original face unchanged.",
+        "Apply a professional light makeup result visibly inspired by the salon reference image.",
+        "Create an even and refined complexion while preserving realistic skin texture.",
+        "Add subtle neutral eye definition, clearly defined lashes, softly refined brows, gentle blush, and natural soft lip color.",
+        "The before/after difference must be noticeable at first glance, but still look like professional light makeup, not heavy glam.",
+      ].join(" ");
+    }
+
+    return "Apply the selected makeup style as a clearly visible professional makeup transformation. Do not return the original face unchanged.";
+  }
+
+  if (serviceCategory === "lashes") {
+    if (selected.includes("spiky")) {
+      return [
+        "SPIKY LASHES MUST BE CLEARLY VISIBLE.",
+        "Do not return the customer's original eyelashes unchanged.",
+        "Apply professional spiky lash extensions visibly inspired by the salon reference image.",
+        "Create distinct separated spike clusters, noticeable added length, lift, darker lash definition, and textured pointed lash tips.",
+        "The spiky pattern must be obvious at first glance.",
+        "Change eyelashes only; preserve the customer's exact eyes, eyelids, iris, brows, skin, makeup, and facial identity.",
+      ].join(" ");
+    }
+
+    return "Make the selected lash transformation clearly visible while changing eyelashes only.";
+  }
+
+  return "";
+}
 export function buildBeautyPrompt(input: {
   serviceCategory: string;
   selectedOptions: Record<string, string>;
@@ -38,6 +75,10 @@ export function buildBeautyPrompt(input: {
     promptFragment: reference.promptFragment, visualRules: reference.visualRules,
     generationRules: reference.generationRules, negativeConstraints: reference.negativeConstraints,
   }));
+  const visibleChangeInstruction = getVisibleChangeInstruction(
+  input.serviceCategory,
+  input.selectedOptions
+);
   return [
     "MARVAA HIGH-FIDELITY, PHOTOREALISTIC BEAUTY EDIT — follow every scoped instruction.",
     `1. CUSTOMER IDENTITY IMAGE: Input image 1 is the primary and ONLY identity source (${input.serviceCategory === "nails" ? "customer hand" : "customer face/body"}).`,
@@ -45,6 +86,7 @@ export function buildBeautyPrompt(input: {
     `3. STYLE REFERENCE IMAGE(S): Final inputs are salon-curated style controls, never identity sources. Scoped purposes: ${JSON.stringify(input.referenceImagePurposes)}.`,
     `4. SELECTED SERVICE: ${input.serviceCategory}. ISOLATION: ${isolation[input.serviceCategory] ?? "Change only the explicitly selected treatment area; preserve everything else pixel-consistently where possible."}`,
     `5. SELECTED OPTIONS: ${JSON.stringify(input.selectedOptions)}. Do not invent additional treatments.`,
+    `5A. REQUIRED VISIBLE RESULT: ${visibleChangeInstruction || "Apply the selected treatment visibly and faithfully to its reference while preserving identity."}`,
     `6. BEAUTY PROFILE: ${JSON.stringify(input.beautyProfile)}. Use only as professional treatment context; never use it to alter identity.`,
     `7. RECOMMENDATION RESULT: ${JSON.stringify(input.recommendationResult ?? null)}. This is Marvaa's decision; do not independently choose another treatment.`,
     `8. MARVAA RULES: ${JSON.stringify(input.recommendationRules.map(rule => ({ id: rule.id, feature: rule.featureKey, operator: rule.operator, comparison: rule.comparisonValue, reason: rule.reasonEn, metadata: rule.metadata })))}.`,
