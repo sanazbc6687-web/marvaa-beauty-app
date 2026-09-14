@@ -1,18 +1,22 @@
 import { NextResponse } from "next/server";
 import { getServiceProviders } from "@/lib/sano/providers";
+import { assessReadiness } from "@/lib/public/readiness";
+import { findPublicTenant, isLocalHostname, parsePublicTenants } from "@/lib/public/tenant-config";
 
 export const runtime = "nodejs";
-export async function GET() {
-  const env = {
-    supabaseUrl: Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL), serviceRole: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY),
-    sessionSigning: Boolean(process.env.PUBLIC_SESSION_SIGNING_SECRET), tenants: Boolean(process.env.PUBLIC_TENANTS_JSON), openAi: Boolean(process.env.OPENAI_API_KEY),
-  };
-  let schema = false, customerBucket = false;
-  if (env.supabaseUrl && env.serviceRole) try {
+export async function GET(request: Request) {
+  let schema = false, bucketExists = false, bucketPrivate = false;
+  if (process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY) try {
     const provider = getServiceProviders();
     await provider.database.request({ path: "/rest/v1/rpc/marvaa_phase1_capabilities", init: { method: "POST", body: "{}" } }); schema = true;
-    const buckets = await provider.database.request<Array<{ id: string }>>({ path: "/storage/v1/bucket" });
-    customerBucket = buckets.some(bucket => bucket.id === "customer-simulations");
-  } catch { /* readiness is intentionally boolean-only */ }
-  return NextResponse.json({ ready: Object.values(env).every(Boolean) && schema && customerBucket, env, capabilities: { schema, customerBucket } });
+    const buckets = await provider.database.request<Array<{ id: string; public: boolean }>>({ path: "/storage/v1/bucket" });
+    const bucket = buckets.find(item => item.id === "customer-simulations");
+    bucketExists = Boolean(bucket); bucketPrivate = bucket?.public === false;
+  } catch { /* readiness output remains sanitized */ }
+  const tenants=parsePublicTenants(process.env.PUBLIC_TENANTS_JSON);
+  const hostname=new URL(request.url).hostname;
+  const result = assessReadiness({ supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL, serviceRole: process.env.SUPABASE_SERVICE_ROLE_KEY,
+    signingSecret: process.env.PUBLIC_SESSION_SIGNING_SECRET, openAi: process.env.OPENAI_API_KEY, tenantConfigValid:Boolean(tenants),
+    hostnameMapped:Boolean(isLocalHostname(hostname)||(tenants&&findPublicTenant(tenants,hostname))), schema, bucketExists, bucketPrivate });
+  return NextResponse.json(result, { status: result.ready ? 200 : 503 });
 }

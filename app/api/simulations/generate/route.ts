@@ -8,6 +8,7 @@ import { getServiceProviders } from "@/lib/sano/providers";
 import type { ImageAsset, RecommendationMode, StyleReference, StyleReferenceImage } from "@/lib/types";
 import { resolvePublicTenant } from "@/lib/public/tenant";
 import { verifySessionProof } from "@/lib/public/session-proof";
+import { recoveryStateForFailure } from "@/lib/simulation/recovery";
 
 export const runtime = "nodejs";
 const FRIENDLY_ERROR = "در اجرای تغییر مشکلی پیش آمد. لطفاً دوباره تلاش کنید.";
@@ -28,6 +29,7 @@ export async function POST(request: Request) {
   const started = Date.now();
   let body: RequestBody | undefined;
   let generationId: string | undefined;
+  let providerStarted = false;
   try {
     if (Number(request.headers.get("content-length") || 0) > 30 * 1024 * 1024) throw new PublicGenerationError("REQUEST_TOO_LARGE", 413);
     body = await request.json() as RequestBody;
@@ -67,6 +69,7 @@ export async function POST(request: Request) {
     }) }});
     const diagnostics = metadata(body, selected, rules, started);
     await providers.database.request({path:`/rest/v1/image_generations?id=eq.${generationId}`,init:{ method: "PATCH", body: JSON.stringify({ choice_id: choiceId, input_path: inputPath, metadata: diagnostics }) }});
+    providerStarted = true;
     const result = await providers.ai.generate({
       primaryImage: body.images.primaryImage, detailImages: body.images.detailImages,
       selectedReferenceImages: selected.images, selectedReferences: selected.references,
@@ -81,7 +84,7 @@ export async function POST(request: Request) {
     const generatedImageUrl = outputPath ? await providers.objectStore.createDownloadUrl("customer-simulations", outputPath, 300) : `data:${result.contentType};base64,${resultBytes.toString("base64")}`;
     return NextResponse.json({ generationId, sessionId: body.sessionId, generatedImageUrl, persistent: Boolean(outputPath), status: "completed", metadata: completed, referencesUsed: selected.references.map(reference => reference.id) });
   } catch (error) {
-    if (generationId) await getServiceProviders().database.request({path:"/rest/v1/rpc/fail_image_generation_reservation",init:{ method: "POST", body: JSON.stringify({ requested_generation_id: generationId, failure_code: safeCode(error) }) }}).catch(() => undefined);
+    if (generationId) await getServiceProviders().database.request({path:"/rest/v1/rpc/fail_image_generation_reservation",init:{ method: "POST", body: JSON.stringify({ requested_generation_id: generationId, failure_code: safeCode(error), requested_recovery_state: recoveryStateForFailure(providerStarted) }) }}).catch(() => undefined);
     const status = error instanceof PublicGenerationError ? error.status : duplicate(error) ? 409 : 500;
 console.error("[beauty-generation]", JSON.stringify({
   event: "failure",

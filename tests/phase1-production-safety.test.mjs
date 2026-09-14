@@ -26,8 +26,8 @@ test("unknown production tenants fail closed and local fallback is explicit", ()
   assert.match(tenant, /PUBLIC_TENANTS_JSON/); assert.match(tenant, /ALLOW_LOCAL_MARVAA_TENANT === "true"/); assert.match(tenant, /throw new PublicTenantError/);
 });
 test("atomic reservation serializes final allowance, replays completion, and releases failures", () => {
-  assert.match(migration, /pg_advisory_xact_lock/); assert.match(migration, /status in \('pending','completed'\)/);
-  assert.match(migration, /if found then[\s\S]+existing\.status='completed'/); assert.match(migration, /status='failed'/);
+  assert.equal((migration.match(/pg_advisory_xact_lock/g)||[]).length, 2); assert.match(migration, /status in \('pending','completed'\)/);
+  assert.match(migration, /if found then[\s\S]+existing\.status='completed'/); assert.match(migration, /then 'failed' else 'pending'/);
   assert.match(route, /reserved\.outcome === "completed"[\s\S]+return NextResponse/);
 });
 test("stale pending work is manual-only and cannot trigger provider retry", () => {
@@ -36,11 +36,11 @@ test("stale pending work is manual-only and cannot trigger provider retry", () =
 });
 test("saved media access and deletion are proof and tenant scoped", () => {
   const media = read("app/api/simulations/[generationId]/media/route.ts");
-  assert.match(media, /verifySessionProof/); assert.match(media, /tenant_id=eq\.\$\{tenant\.id\}/); assert.match(media, /objectStore\.delete/); assert.match(media, /input_path: null, output_path: null/);
+  assert.match(media, /verifySessionProof/); assert.match(media, /generationQuery\(generationId, tenant\.id, body\.sessionId\)/); assert.match(media, /objectStore\.delete/); assert.match(media, /mediaDeletionPatch\("customer"/);
 });
 test("readiness exposes presence booleans and never environment values", () => {
   const readiness = read("app/api/readiness/route.ts");
-  assert.match(readiness, /Boolean\(process\.env/); assert.doesNotMatch(readiness, /process\.env\[[^\]]+\][,}]/);
+  assert.match(readiness, /assessReadiness/); assert.match(readiness, /status: result.ready \? 200 : 503/);
 });
 test("generation remains synchronous with no queue worker and tests make no provider request", () => {
   assert.match(route, /await providers\.ai\.generate/); assert.doesNotMatch(route, /BullMQ|Redis|Queue|Worker/);

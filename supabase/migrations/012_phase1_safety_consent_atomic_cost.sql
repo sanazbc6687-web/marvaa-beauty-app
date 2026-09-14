@@ -30,6 +30,8 @@ language plpgsql security definer set search_path = public as $$
 declare existing public.image_generations%rowtype; cfg jsonb; used int; allowed int; verified boolean; new_id uuid := gen_random_uuid();
 begin
   perform pg_advisory_xact_lock(hashtextextended(requested_tenant_id::text || ':' || requested_session_id::text, 0));
+  -- A second, tenant-wide lock makes the daily ceiling atomic across sessions.
+  perform pg_advisory_xact_lock(hashtextextended('tenant-daily:' || requested_tenant_id::text || ':' || current_date::text, 0));
   if not exists(select 1 from anonymous_sessions where id=requested_session_id and tenant_id=requested_tenant_id) then raise exception 'INVALID_SESSION'; end if;
   select * into existing from image_generations where tenant_id=requested_tenant_id and session_id=requested_session_id and request_id=requested_request_id;
   if found then return query select case when existing.status='completed' then 'completed' else 'in_progress' end, existing.id, existing.output_path; return; end if;
@@ -45,9 +47,16 @@ begin
   return query select 'reserved',new_id,null::text;
 end $$;
 
-create or replace function public.fail_image_generation_reservation(requested_generation_id uuid, failure_code text)
+drop function if exists public.fail_image_generation_reservation(uuid,text);
+create or replace function public.fail_image_generation_reservation(requested_generation_id uuid, failure_code text, requested_recovery_state text)
 returns boolean language plpgsql security definer set search_path=public as $$
-begin update image_generations set status='failed', output_path=null, recovery_state='safe_to_retry', metadata=jsonb_build_object('failure_code',left(regexp_replace(failure_code,'[^A-Z0-9_]','','g'),64)) where id=requested_generation_id and status='pending'; return found; end $$;
+begin
+  if requested_recovery_state not in ('safe_to_retry','manual_reconciliation_required') then raise exception 'INVALID_RECOVERY_STATE'; end if;
+  update image_generations set status=case when requested_recovery_state='safe_to_retry' then 'failed' else 'pending' end,
+    output_path=null, recovery_state=requested_recovery_state,
+    metadata=jsonb_build_object('failure_code',left(regexp_replace(failure_code,'[^A-Z0-9_]','','g'),64))
+  where id=requested_generation_id and status='pending'; return found;
+end $$;
 
 -- Marks stale work for human review. It deliberately never reserves or calls a provider.
 create or replace function public.mark_stale_generation_for_reconciliation(requested_generation_id uuid)
@@ -56,10 +65,10 @@ begin update image_generations set recovery_state='manual_reconciliation_require
 
 create or replace function public.marvaa_phase1_capabilities() returns jsonb language sql security definer set search_path=public as $$ select '{"atomic_reservation":true,"consent_retention":true,"manual_reconciliation":true}'::jsonb $$;
 revoke all on function public.reserve_image_generation(uuid,uuid,uuid,boolean) from public,anon,authenticated;
-revoke all on function public.fail_image_generation_reservation(uuid,text) from public,anon,authenticated;
+revoke all on function public.fail_image_generation_reservation(uuid,text,text) from public,anon,authenticated;
 revoke all on function public.mark_stale_generation_for_reconciliation(uuid) from public,anon,authenticated;
 revoke all on function public.marvaa_phase1_capabilities() from public,anon,authenticated;
 grant execute on function public.reserve_image_generation(uuid,uuid,uuid,boolean) to service_role;
-grant execute on function public.fail_image_generation_reservation(uuid,text) to service_role;
+grant execute on function public.fail_image_generation_reservation(uuid,text,text) to service_role;
 grant execute on function public.mark_stale_generation_for_reconciliation(uuid) to service_role;
 grant execute on function public.marvaa_phase1_capabilities() to service_role;
