@@ -17,7 +17,7 @@ npm run dev
 ## معماری
 - `components/mirror/MirrorUI.tsx`: زبان بصری مشترک Mirror UI.
 - `lib/catalog.ts`: fallback دو‌زبانه و database-ready برای دسته‌ها، تصمیم‌ها و گزینه‌ها.
-- `lib/simulation/`: Prompt Builder مرجع‌محور و provider کاملاً Mock.
+- `lib/simulation/`: Prompt Builder مرجع‌محور و اتصال سرور به provider واقعی تولید تصویر.
 - `lib/tenant.ts`: tenant دمو؛ در تولید براساس hostname از Supabase خوانده می‌شود.
 - `supabase/migrations/002_future_mirror_v2.sql`: Reference Library، تصاویر مرجع، Portfolio مستقل و Beauty Profile.
 

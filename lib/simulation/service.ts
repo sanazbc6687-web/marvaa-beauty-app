@@ -3,6 +3,7 @@
 import type { GenerationImageInputs, RecommendationMode } from "../types";
 import { getOrCreatePublicSession } from "./public-session";
 import { logSupabaseError, publicRequest } from "../supabase/client";
+import { normalizeRecommendationMode } from "../recommendation/mode";
 
 export type SimulationInput = {
   images: GenerationImageInputs; tenantId: string; serviceCategory: string;
@@ -23,7 +24,7 @@ export async function generateBeautySimulation(input: SimulationInput, requestId
   // The server route owns customer-simulations input/output storage and generation persistence.
   const sessionId = await getOrCreatePublicSession(input.tenantId);
   const response = await fetch("/api/simulations/generate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
-    ...input, requestId, sessionId, selectedReferenceSlugs: input.selectedReferences,
+    ...input, recommendationMode: normalizeRecommendationMode(input.recommendationMode), requestId, sessionId, selectedReferenceSlugs: input.selectedReferences,
     images: { primaryImage: input.images.primaryImage, detailImages: input.images.detailImages },
   }) });
   const result = await response.json().catch(() => ({})) as SimulationResult & { error?: string; message?: string };

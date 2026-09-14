@@ -44,3 +44,13 @@ html,body{font-family:var(--font-ui-fa)}
 .comparison{animation:result-enter .65s ease both}
 @keyframes loading-breathe{50%{box-shadow:inset 0 0 72px #6f3cff40,0 0 85px #6f3cff3c;transform:scale(1.012)}}@keyframes orbit-drift{0%,100%{transform:rotate(-5deg) scale(1)}50%{transform:rotate(175deg) scale(1.02)}}@keyframes ribbon-flow{0%,100%{transform:rotate(18deg) scale(.98);opacity:.35}50%{transform:rotate(198deg) scale(1.04);opacity:.7}}@keyframes center-glow{50%{transform:scale(1.12) rotate(8deg);text-shadow:0 0 10px #fff,0 0 28px #dfb85d,0 0 52px #6f3cff}}@keyframes star-float-one{50%{transform:translate(20px,-15px) scale(1.2)}}@keyframes star-float-two{50%{transform:translate(-13px,22px) scale(.82)}}@keyframes star-float-three{50%{transform:translate(-18px,-12px) scale(1.25)}}@keyframes particle-twinkle{0%,100%{opacity:.15;transform:scale(.5)}50%{opacity:1;transform:scale(1.4)}}@keyframes loading-enter{from{opacity:0;transform:translateY(8px)}}@keyframes result-enter{from{opacity:0;transform:scale(.985)}}
 @media(max-width:700px){.mirror-loading{padding-top:clamp(18px,4vh,38px)}.loading-mirror{width:176px;height:244px}.mirror-loading h1{font-size:20px;margin-top:25px}.loading-benefits{margin-top:23px}}
+
+/* Phase 1 customer entry and honest offers empty state. */
+.main-choices{display:grid;grid-template-columns:repeat(3,1fr);gap:11px}
+.main-choices .mirror-tile{min-height:180px;display:flex;flex-direction:column;align-items:flex-start;justify-content:center}
+.offers-empty{padding:34px 24px;text-align:center}
+.offers-empty .mirror-icon{margin:0 auto 18px}
+.offers-empty>span{font:9px var(--font-en);letter-spacing:2px;color:var(--accent)}
+.offers-empty h2{font-size:19px;font-weight:500}
+.offers-empty p{max-width:390px;margin:0 auto 24px;color:var(--muted);font-size:11px;line-height:2}
+@media(max-width:700px){.main-choices{grid-template-columns:1fr}.main-choices .mirror-tile{min-height:112px;flex-direction:row;align-items:center}}
