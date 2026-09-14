@@ -4,8 +4,7 @@ import { recommend } from "@/lib/recommendation/recommendation-engine";
 import type { RecommendationRule } from "@/lib/recommendation/recommendation-rules";
 import { selectGenerationReferences } from "@/lib/references/selector";
 import { buildBeautyPrompt, IDENTITY_RULES } from "@/lib/simulation/prompt-builder";
-import { OpenAIBeautyImageProvider } from "@/lib/simulation/provider";
-import { serverRequest, serverSignedUrl, serverUpload } from "@/lib/supabase/server";
+import { getServiceProviders } from "@/lib/sano/providers";
 import type { ImageAsset, RecommendationMode, StyleReference, StyleReferenceImage } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -30,7 +29,8 @@ export async function POST(request: Request) {
     body = await request.json() as RequestBody;
     validate(body);
     generationId = crypto.randomUUID();
-    const context = await loadContext(body);
+    const providers = getServiceProviders();
+    const context = await loadContext(body, providers);
     const selected = chooseReferences(body, context.categories, context.references, context.rules, context.profile);
     if (!selected.references.length) throw new PublicGenerationError("NO_ACTIVE_REFERENCE", 422);
     const rules = context.rules.filter(rule => !rule.referenceId || selected.references.some(reference => reference.id === rule.referenceId));
@@ -45,29 +45,29 @@ export async function POST(request: Request) {
     const inputBlob = dataUrlBlob(body.images.primaryImage.dataUrl);
     const inputPath = `${body.tenantId}/${body.sessionId}/input/${crypto.randomUUID()}.${extension(inputBlob.type)}`;
     const outputPath = `${body.tenantId}/${body.sessionId}/output/${generationId}.png`;
-    await serverUpload("customer-simulations", inputPath, inputBlob);
-    await serverRequest("/rest/v1/user_choices", { method: "POST", headers: { Prefer: "return=minimal" }, body: JSON.stringify({
+    await providers.objectStore.upload("customer-simulations", inputPath, inputBlob);
+    await providers.database.request({path:"/rest/v1/user_choices", init:{ method: "POST", headers: { Prefer: "return=minimal" }, body: JSON.stringify({
       id: choiceId, tenant_id: body.tenantId, session_id: body.sessionId, category_id: selected.category.id,
       path: body.recommendationMode ? "consult" : "self", selections: body.selectedOptions,
-    }) });
+    }) }});
     const diagnostics = metadata(body, selected, rules, started);
-    await serverRequest("/rest/v1/image_generations", { method: "POST", headers: { Prefer: "return=minimal" }, body: JSON.stringify({
+    await providers.database.request({path:"/rest/v1/image_generations",init:{ method: "POST", headers: { Prefer: "return=minimal" }, body: JSON.stringify({
       id: generationId, request_id: body.requestId, tenant_id: body.tenantId, session_id: body.sessionId, choice_id: choiceId,
       input_path: inputPath, output_path: null, provider: "openai", status: "pending", metadata: diagnostics,
-    }) });
-    const result = await new OpenAIBeautyImageProvider().generate({
+    }) }});
+    const result = await providers.ai.generate({
       primaryImage: body.images.primaryImage, detailImages: body.images.detailImages,
       selectedReferenceImages: selected.images, selectedReferences: selected.references,
       recommendationMode: engineMode(body.recommendationMode), beautyProfile: context.profile,
       identityPreservationRules: [...IDENTITY_RULES, ...(body.identityPreservationInstructions ?? [])], generationPrompt: prompt,
     });
-    await serverUpload("customer-simulations", outputPath, new Blob([Buffer.from(result.bytes)], { type: result.contentType }));
+    await providers.objectStore.upload("customer-simulations", outputPath, new Blob([Buffer.from(result.bytes)], { type: result.contentType }));
     const completed = { ...diagnostics, model: result.model, durationMs: Date.now() - started, success: true };
-    await serverRequest(`/rest/v1/image_generations?id=eq.${generationId}`, { method: "PATCH", body: JSON.stringify({ output_path: outputPath, status: "completed", metadata: completed }) });
+    await providers.database.request({path:`/rest/v1/image_generations?id=eq.${generationId}`,init:{ method: "PATCH", body: JSON.stringify({ output_path: outputPath, status: "completed", metadata: completed }) }});
     log("success", body, completed);
-    return NextResponse.json({ generationId, sessionId: body.sessionId, generatedImageUrl: await serverSignedUrl("customer-simulations", outputPath), status: "completed", metadata: completed, referencesUsed: selected.references.map(reference => reference.id) });
+    return NextResponse.json({ generationId, sessionId: body.sessionId, generatedImageUrl: await providers.objectStore.createDownloadUrl("customer-simulations", outputPath), status: "completed", metadata: completed, referencesUsed: selected.references.map(reference => reference.id) });
   } catch (error) {
-    if (generationId) await serverRequest(`/rest/v1/image_generations?id=eq.${generationId}`, { method: "PATCH", body: JSON.stringify({ status: "failed", output_path: null, metadata: { success: false, durationMs: Date.now() - started } }) }).catch(() => undefined);
+    if (generationId) await getServiceProviders().database.request({path:`/rest/v1/image_generations?id=eq.${generationId}`,init:{ method: "PATCH", body: JSON.stringify({ status: "failed", output_path: null, metadata: { success: false, durationMs: Date.now() - started } }) }}).catch(() => undefined);
     const status = error instanceof PublicGenerationError ? error.status : duplicate(error) ? 409 : 500;
 console.error("[beauty-generation]", JSON.stringify({
   event: "failure",
@@ -77,27 +77,26 @@ console.error("[beauty-generation]", JSON.stringify({
   generationId,
   durationMs: Date.now() - started,
   errorCode: safeCode(error),
-  rawError: error instanceof Error ? error.message : String(error),
-  stack: error instanceof Error ? error.stack : undefined
 }));
     return NextResponse.json({ error: status === 409 ? "DUPLICATE_GENERATION" : "GENERATION_FAILED", message: FRIENDLY_ERROR }, { status });
   }
 }
 
-async function loadContext(body: RequestBody) {
-  const session = await serverRequest<{ id: string }[]>(`/rest/v1/anonymous_sessions?select=id&tenant_id=eq.${body.tenantId}&id=eq.${body.sessionId}&limit=1`);
+async function loadContext(body: RequestBody, providers: ReturnType<typeof getServiceProviders>) {
+  const request = <T,>(path:string)=>providers.database.request<T>({path});
+  const session = await request<{ id: string }[]>(`/rest/v1/anonymous_sessions?select=id&tenant_id=eq.${body.tenantId}&id=eq.${body.sessionId}&limit=1`);
   if (!session.length) throw new PublicGenerationError("INVALID_SESSION", 403);
-  const settings = await serverRequest<{ value: { anonymous?: number; maximum?: number; generation_enabled?: boolean } }[]>(`/rest/v1/app_settings?select=value&tenant_id=eq.${body.tenantId}&key=eq.generation_limits&limit=1`);
+  const settings = await request<{ value: { anonymous?: number; maximum?: number; generation_enabled?: boolean } }[]>(`/rest/v1/app_settings?select=value&tenant_id=eq.${body.tenantId}&key=eq.generation_limits&limit=1`);
   if (settings[0]?.value.generation_enabled === false) throw new PublicGenerationError("GENERATION_DISABLED", 403);
-  const generations = await serverRequest<{ id: string }[]>(`/rest/v1/image_generations?select=id&tenant_id=eq.${body.tenantId}&session_id=eq.${body.sessionId}&status=eq.completed`);
+  const generations = await request<{ id: string }[]>(`/rest/v1/image_generations?select=id&tenant_id=eq.${body.tenantId}&session_id=eq.${body.sessionId}&status=eq.completed`);
   const limit = settings[0]?.value.maximum ?? 3;
   if (generations.length >= limit) throw new PublicGenerationError("GENERATION_LIMIT", 429);
-  const categories = await serverRequest<CategoryRow[]>(`/rest/v1/service_categories?select=id,slug,enabled&tenant_id=eq.${body.tenantId}&enabled=eq.true&order=sort_order.asc`);
+  const categories = await request<CategoryRow[]>(`/rest/v1/service_categories?select=id,slug,enabled&tenant_id=eq.${body.tenantId}&enabled=eq.true&order=sort_order.asc`);
   if (!categories.length) throw new PublicGenerationError("NO_ENABLED_SERVICES", 403);
-  const references = await serverRequest<DbReference[]>(`/rest/v1/style_references?select=*,style_reference_images(id,style_reference_id,storage_path,alt_fa,alt_en,is_primary,sort_order,active)&tenant_id=eq.${body.tenantId}&active=eq.true&style_reference_images.active=eq.true&order=sort_order.asc`);
-  const rules = mapRules(await serverRequest<DbRule[]>(`/rest/v1/recommendation_rules?select=*&tenant_id=eq.${body.tenantId}&active=eq.true&order=priority.asc`));
-  const profiles = await serverRequest<{ metadata: Record<string, unknown> }[]>(`/rest/v1/beauty_profiles?select=metadata&tenant_id=eq.${body.tenantId}&session_id=eq.${body.sessionId}&order=updated_at.desc&limit=1`);
-  return { categories, references: await Promise.all(references.map(mapReference)), rules, profile: (profiles[0]?.metadata?.beautyProfile ?? {}) as BeautyProfile };
+  const references = await request<DbReference[]>(`/rest/v1/style_references?select=*,style_reference_images(id,style_reference_id,storage_path,alt_fa,alt_en,is_primary,sort_order,active)&tenant_id=eq.${body.tenantId}&active=eq.true&style_reference_images.active=eq.true&order=sort_order.asc`);
+  const rules = mapRules(await request<DbRule[]>(`/rest/v1/recommendation_rules?select=*&tenant_id=eq.${body.tenantId}&active=eq.true&order=priority.asc`));
+  const profiles = await request<{ metadata: Record<string, unknown> }[]>(`/rest/v1/beauty_profiles?select=metadata&tenant_id=eq.${body.tenantId}&session_id=eq.${body.sessionId}&order=updated_at.desc&limit=1`);
+  return { categories, references: await Promise.all(references.map(row=>mapReference(row,providers))), rules, profile: (profiles[0]?.metadata?.beautyProfile ?? {}) as BeautyProfile };
 }
 
 function chooseReferences(body: RequestBody, categories: CategoryRow[], references: StyleReference[], rules: RecommendationRule[], profile: BeautyProfile) {
@@ -116,11 +115,11 @@ function chooseReferences(body: RequestBody, categories: CategoryRow[], referenc
   return { category, ...selection, recommendationResult: { referenceId: reference.id, score: winner.total, reasons: winner.reasons.map(reason => reason.en) } };
 }
 
-async function mapReference(row: DbReference): Promise<StyleReference> {
+async function mapReference(row: DbReference, providers: ReturnType<typeof getServiceProviders>): Promise<StyleReference> {
   return { id: row.id, tenantId: row.tenant_id, serviceCategoryId: row.service_category_id, serviceOptionId: row.service_option_id ?? undefined,
     title: row.title, slug: row.slug, referenceType: row.reference_type, description: row.description ?? row.technical_definition ?? "",
     referenceImages: await Promise.all((row.style_reference_images ?? []).map(async image => ({ id: image.id, styleReferenceId: image.style_reference_id,
-      imageUrl: await serverSignedUrl("style-references", image.storage_path), altFa: image.alt_fa ?? "", altEn: image.alt_en ?? "",
+      imageUrl: await providers.objectStore.createDownloadUrl("style-references", image.storage_path), altFa: image.alt_fa ?? "", altEn: image.alt_en ?? "",
       isPrimary: image.is_primary, sortOrder: image.sort_order, active: image.active }))), primaryReferenceImage: undefined,
     visualRules: row.visual_rules ?? [], generationRules: row.generation_rules ?? [], promptFragment: row.prompt_fragment ?? row.technical_definition ?? "",
     negativeConstraints: row.negative_constraints ?? [], active: row.active, sortOrder: row.sort_order, metadata: row.metadata ?? {}, createdAt: row.created_at, updatedAt: row.updated_at };

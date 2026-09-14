@@ -45,6 +45,7 @@ export class OpenAIBeautyImageProvider implements BeautyImageProvider {
     form.set("quality", "high");
     form.set("size", "auto");
     form.set("output_format", "png");
+    form.set("input_fidelity", "high");
 
     const assets = [input.primaryImage, ...input.detailImages];
 
@@ -64,13 +65,6 @@ export class OpenAIBeautyImageProvider implements BeautyImageProvider {
 
       form.append("image[]", await refResponse.blob(), `style-${index}.png`);
     }
-console.log("[PROVIDER_DEBUG]", {
-  customerImageCount: assets.length,
-  referenceImageCount: input.selectedReferenceImages.length,
-  referenceImageIds: input.selectedReferenceImages.map(x => x.id),
-  referenceImageUrls: input.selectedReferenceImages.map(x => x.imageUrl),
-  selectedReferenceIds: input.selectedReferences.map(x => x.id),
-});
     const response = await this.fetcher("https://api.openai.com/v1/images/edits", {
       method: "POST",
       headers: {
@@ -80,12 +74,10 @@ console.log("[PROVIDER_DEBUG]", {
     });
 
     if (!response.ok) {
-      const errorText = await response.text().catch(() => "");
       console.error("OPENAI_IMAGE_EDIT_ERROR", {
         status: response.status,
-        body: errorText,
       });
-      throw new Error(`OPENAI_IMAGE_EDIT_FAILED_${response.status}_${errorText || "EMPTY_ERROR"}`);
+      throw new Error(`OPENAI_IMAGE_EDIT_FAILED_${response.status}`);
     }
 
     const result = (await response.json()) as {
@@ -94,7 +86,7 @@ console.log("[PROVIDER_DEBUG]", {
 
     const encoded = result.data?.[0]?.b64_json;
     if (!encoded) {
-      console.error("OPENAI_IMAGE_EMPTY_RESULT", result);
+      console.error("OPENAI_IMAGE_EMPTY_RESULT");
       throw new Error("OPENAI_IMAGE_EMPTY_RESULT");
     }
 

@@ -47,7 +47,7 @@ test("server route has provider failure state, no fake fallback, idempotency, li
   assert.match(route, /request_id: body\.requestId/);
   assert.match(route, /generation_enabled === false/);
   assert.match(route, /if \(!category\).*SERVICE_DISABLED/);
-  assert.match(route, /new OpenAIBeautyImageProvider\(\)\.generate/);
+  assert.match(route, /providers\.ai\.generate/);
   assert.match(client, /generationPending\.current/);
   assert.match(client, /currentGeneration\?\.generatedImageUrl/);
 });
@@ -55,6 +55,6 @@ test("server route has provider failure state, no fake fallback, idempotency, li
 test("persistence records provider, recommendation mode, rules, references and images", async () => {
   const route = await readFile(new URL("../app/api/simulations/generate/route.ts", import.meta.url), "utf8");
   for (const field of ["provider", "selectedOptionIds", "recommendationMode", "recommendationRuleIds", "referenceIds", "referenceImageIds", "durationMs"]) assert.match(route, new RegExp(field));
-  assert.match(route, /serverUpload\("customer-simulations", outputPath/);
+  assert.match(route, /providers\.objectStore\.upload\("customer-simulations", outputPath/);
   assert.match(route, /status: "completed"/);
 });
