@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getPublicProviders, getServiceProviders } from "@/lib/sano/providers";
 import { authorizeTenant, requireTenantId } from "@/lib/sano/tenant";
-import { generationQuery, mediaDeletionPatch, requireGenerationId, storedMediaKeys } from "@/lib/simulation/media-request";
+import { generationQuery, mediaDeletionPatch, requireGenerationId, requireOwnedMediaKeys } from "@/lib/simulation/media-request";
 
 type AdminAction = "list" | "view" | "delete";
 type Row = { id: string; session_id: string; input_path: string | null; output_path: string | null; permanent_storage_consent: boolean; retention_expires_at: string | null; deleted_at: string | null; created_at: string; status: string; user_choices: { selections: Record<string,string>; path: string } | null };
@@ -19,10 +19,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ items: rows.map(row => ({ ...row, input_path: undefined, output_path: undefined, hasInput: Boolean(row.input_path), hasResult: Boolean(row.output_path) })) });
     }
     const generationId = requireGenerationId(body.generationId);
-    const rows = await service.database.request<Array<Pick<Row,"input_path"|"output_path"|"permanent_storage_consent">>>({ path: generationQuery(generationId, tenantId) });
+    const rows = await service.database.request<Array<Pick<Row,"session_id"|"input_path"|"output_path"|"permanent_storage_consent">>>({ path: generationQuery(generationId, tenantId) });
     const row = rows[0]; if (!row?.permanent_storage_consent) return NextResponse.json({ error: "SAVED_MEDIA_NOT_FOUND" }, { status: 404 });
+    const keys = requireOwnedMediaKeys(row,tenantId,row.session_id);
     if (action === "delete") {
-      const keys = storedMediaKeys(row); if (keys.length) await service.objectStore.delete("customer-simulations",keys);
+      if (keys.length) await service.objectStore.delete("customer-simulations",keys);
       const query = new URLSearchParams({ id:`eq.${generationId}`,tenant_id:`eq.${tenantId}` });
       await service.database.request({ path:`/rest/v1/image_generations?${query}`,init:{method:"PATCH",body:JSON.stringify(mediaDeletionPatch("admin",new Date().toISOString()))} });
       return NextResponse.json({ deleted:true });

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServiceProviders } from "@/lib/sano/providers";
 import { assessReadiness } from "@/lib/public/readiness";
-import { findPublicTenant, isLocalHostname, parsePublicTenants } from "@/lib/public/tenant-config";
+import { isReadinessHostnameMapped, parsePublicTenants } from "@/lib/public/tenant-config";
 
 export const runtime = "nodejs";
 export async function GET(request: Request) {
@@ -17,6 +17,6 @@ export async function GET(request: Request) {
   const hostname=new URL(request.url).hostname;
   const result = assessReadiness({ supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL, serviceRole: process.env.SUPABASE_SERVICE_ROLE_KEY,
     signingSecret: process.env.PUBLIC_SESSION_SIGNING_SECRET, openAi: process.env.OPENAI_API_KEY, tenantConfigValid:Boolean(tenants),
-    hostnameMapped:Boolean(isLocalHostname(hostname)||(tenants&&findPublicTenant(tenants,hostname))), schema, bucketExists, bucketPrivate });
+    hostnameMapped:isReadinessHostnameMapped(tenants,hostname,process.env.ALLOW_LOCAL_MARVAA_TENANT==="true"), schema, bucketExists, bucketPrivate });
   return NextResponse.json(result, { status: result.ready ? 200 : 503 });
 }

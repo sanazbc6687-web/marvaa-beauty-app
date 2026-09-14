@@ -16,7 +16,7 @@ insert into public.app_settings(tenant_id,key,value)
 values ('00000000-0000-0000-0000-000000000001','generation_limits',
   '{"generation_enabled":true,"anonymous_allowance":1,"verified_contact_extra_allowance":2,"absolute_maximum":3,"daily_ceiling":20,"retention_months":12}'::jsonb)
 on conflict (tenant_id,key) do update set value =
-  jsonb_build_object(
+  coalesce(app_settings.value, '{}'::jsonb) || jsonb_build_object(
     'generation_enabled',coalesce(app_settings.value->'generation_enabled','true'::jsonb),
     'anonymous_allowance',coalesce(app_settings.value->'anonymous_allowance',app_settings.value->'anonymous','1'::jsonb),
     'verified_contact_extra_allowance',coalesce(app_settings.value->'verified_contact_extra_allowance',app_settings.value->'extra_after_lead','2'::jsonb),

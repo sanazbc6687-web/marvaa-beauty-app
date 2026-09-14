@@ -16,6 +16,7 @@ export function findPublicTenant(tenants: ConfiguredPublicTenant[], hostname: st
 }
 
 export function isLocalHostname(hostname: string) { return ["localhost", "127.0.0.1", "::1"].includes(normalizeHost(hostname)); }
+export function isReadinessHostnameMapped(tenants:ConfiguredPublicTenant[]|null,hostname:string,allowLocal:boolean){return (isLocalHostname(hostname)&&allowLocal)||Boolean(tenants&&findPublicTenant(tenants,hostname));}
 function normalizeHost(host: string) { return host.trim().toLowerCase().replace(/\.$/, "").replace(/:\d+$/, ""); }
 function validTenant(value: unknown): value is ConfiguredPublicTenant {
   if (!value || typeof value !== "object") return false;
