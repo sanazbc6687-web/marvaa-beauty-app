@@ -16,6 +16,7 @@ export interface DatabaseProvider {
 
 export interface ObjectStore {
   upload(bucket: string, key: string, body: Blob, accessToken?: string): Promise<void>;
+  download(bucket: string, key: string, accessToken?: string): Promise<Blob>;
   delete(bucket: string, keys: string[], accessToken?: string): Promise<void>;
   createDownloadUrl(bucket: string, key: string, expiresIn?: number, accessToken?: string): Promise<string>;
   publicUrl(bucket: string, key: string): string;

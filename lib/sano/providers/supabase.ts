@@ -17,6 +17,11 @@ export class SupabaseProvider implements AuthProvider, DatabaseProvider, ObjectS
   refresh(refreshToken: string) { return this.raw("/auth/v1/token?grant_type=refresh_token", { method: "POST", body: JSON.stringify({ refresh_token: refreshToken }) }); }
   async signOut(accessToken: string) { await this.raw("/auth/v1/logout", { method: "POST" }, accessToken); }
   async upload(bucket: string, key: string, body: Blob, accessToken?: string) { await this.raw(`/storage/v1/object/${bucket}/${key}`, { method: "POST", headers: { "Content-Type": body.type || "application/octet-stream", "x-upsert": "false" }, body }, accessToken); }
+  async download(bucket: string, key: string, accessToken?: string) {
+    const response = await fetch(`${this.url}/storage/v1/object/${bucket}/${key}`, { cache: "no-store", headers: { apikey: this.key, Authorization: `Bearer ${accessToken ?? this.key}` } });
+    if (!response.ok) { console.warn("SANO_PROVIDER_DOWNLOAD_FAILED", { provider: "supabase", status: response.status }); throw new ProviderHttpError(response.status); }
+    return response.blob();
+  }
   async delete(bucket: string, keys: string[], accessToken?: string) { await this.raw(`/storage/v1/object/${bucket}`, { method: "DELETE", body: JSON.stringify({ prefixes: keys }) }, accessToken); }
   async createDownloadUrl(bucket: string, key: string, expiresIn = 300, accessToken?: string) { const result = await this.raw<{ signedURL: string }>(`/storage/v1/object/sign/${bucket}/${key}`, { method: "POST", body: JSON.stringify({ expiresIn }) }, accessToken); return `${this.url}/storage/v1${result.signedURL}`; }
   publicUrl(bucket: string, key: string) { return `${this.url}/storage/v1/object/public/${bucket}/${key}`; }

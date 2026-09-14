@@ -5,6 +5,8 @@ import type { RecommendationRule } from "@/lib/recommendation/recommendation-rul
 import { selectGenerationReferences } from "@/lib/references/selector";
 import { buildBeautyPrompt, IDENTITY_RULES } from "@/lib/simulation/prompt-builder";
 import { getServiceProviders } from "@/lib/sano/providers";
+import { asyncGenerationEnabled } from "@/lib/sano/generation/feature";
+import { createGenerationQueue } from "@/lib/sano/generation/queue";
 import type { ImageAsset, RecommendationMode, StyleReference, StyleReferenceImage } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -28,8 +30,13 @@ export async function POST(request: Request) {
   try {
     body = await request.json() as RequestBody;
     validate(body);
+    const validBody = body;
     generationId = crypto.randomUUID();
     const providers = getServiceProviders();
+    if (asyncGenerationEnabled()) {
+      const existing = await providers.database.request<{ id: string; status: string; output_path: string | null }[]>({ path: `/rest/v1/image_generations?select=id,status,output_path&tenant_id=eq.${body.tenantId}&session_id=eq.${body.sessionId}&request_id=eq.${body.requestId}&limit=1` });
+      if (existing[0]) return queuedResponse(providers, body, existing[0]);
+    }
     const context = await loadContext(body, providers);
     const selected = chooseReferences(body, context.categories, context.references, context.rules, context.profile);
     if (!selected.references.length) throw new PublicGenerationError("NO_ACTIVE_REFERENCE", 422);
@@ -44,17 +51,37 @@ export async function POST(request: Request) {
     const choiceId = crypto.randomUUID();
     const inputBlob = dataUrlBlob(body.images.primaryImage.dataUrl);
     const inputPath = `${body.tenantId}/${body.sessionId}/input/${crypto.randomUUID()}.${extension(inputBlob.type)}`;
+    const detailPaths = validBody.images.detailImages.map(image => `${validBody.tenantId}/${validBody.sessionId}/input/${crypto.randomUUID()}.${extension(dataUrlBlob(image.dataUrl).type)}`);
     const outputPath = `${body.tenantId}/${body.sessionId}/output/${generationId}.png`;
     await providers.objectStore.upload("customer-simulations", inputPath, inputBlob);
+    if (asyncGenerationEnabled()) await Promise.all(validBody.images.detailImages.map((image, index) => providers.objectStore.upload("customer-simulations", detailPaths[index], dataUrlBlob(image.dataUrl))));
     await providers.database.request({path:"/rest/v1/user_choices", init:{ method: "POST", headers: { Prefer: "return=minimal" }, body: JSON.stringify({
       id: choiceId, tenant_id: body.tenantId, session_id: body.sessionId, category_id: selected.category.id,
       path: body.recommendationMode ? "consult" : "self", selections: body.selectedOptions,
     }) }});
     const diagnostics = metadata(body, selected, rules, started);
+    const asyncWork = asyncGenerationEnabled() ? { prompt, primaryPath: inputPath, detailPaths,
+      primary: withoutData(body.images.primaryImage), details: body.images.detailImages.map(withoutData),
+      referenceIds: selected.images.map(image => image.id), references: selected.references.map(({ referenceImages: _images, primaryReferenceImage: _primary, ...reference }) => reference),
+      recommendationMode: engineMode(body.recommendationMode), beautyProfile: context.profile,
+      identityRules: [...IDENTITY_RULES, ...(body.identityPreservationInstructions ?? [])],
+    } : undefined;
     await providers.database.request({path:"/rest/v1/image_generations",init:{ method: "POST", headers: { Prefer: "return=minimal" }, body: JSON.stringify({
       id: generationId, request_id: body.requestId, tenant_id: body.tenantId, session_id: body.sessionId, choice_id: choiceId,
-      input_path: inputPath, output_path: null, provider: "openai", status: "pending", metadata: diagnostics,
+      // Synchronous compatibility payload: output_path: null, provider: "openai", status: "pending"
+      input_path: inputPath, output_path: null, provider: "openai", status: asyncWork ? "queued" : "pending",
+      metadata: asyncWork ? { ...diagnostics, asyncWork } : diagnostics,
     }) }});
+    if (asyncGenerationEnabled()) {
+      const queue = createGenerationQueue();
+      try { await queue.enqueue({ version: 1, generationId, tenantId: body.tenantId, sessionId: body.sessionId, requestId: body.requestId }); }
+      catch (error) {
+        await providers.database.request({ path: `/rest/v1/image_generations?id=eq.${generationId}`, init: { method: "PATCH", body: JSON.stringify({ status: "failed", metadata: { ...diagnostics, success: false, errorCode: "QUEUE_UNAVAILABLE" } }) } });
+        throw error;
+      } finally { await queue.close(); }
+      console.info("SANO_GENERATION_QUEUED", { event: "queued", tenantId: body.tenantId, generationId, requestId: body.requestId });
+      return NextResponse.json({ generationId, sessionId: body.sessionId, status: "queued" }, { status: 202 });
+    }
     const result = await providers.ai.generate({
       primaryImage: body.images.primaryImage, detailImages: body.images.detailImages,
       selectedReferenceImages: selected.images, selectedReferences: selected.references,
@@ -130,6 +157,11 @@ function engineMode(mode?: RecommendationMode): EngineMode { return mode === "na
 function referencePurpose(reference: StyleReference) { return String(reference.metadata.referencePurpose ?? reference.metadata.purpose ?? reference.referenceType); }
 function dataUrlBlob(value: string) { const match = /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/.exec(value); if (!match) throw new PublicGenerationError("INVALID_IMAGE", 400); const bytes = Buffer.from(match[2], "base64"); if (bytes.length > 10 * 1024 * 1024) throw new PublicGenerationError("IMAGE_TOO_LARGE", 413); return new Blob([bytes], { type: match[1] }); }
 function extension(type: string) { return type === "image/png" ? "png" : type === "image/webp" ? "webp" : "jpg"; }
+function withoutData({ dataUrl: _dataUrl, ...asset }: ImageAsset) { return asset; }
+async function queuedResponse(providers: ReturnType<typeof getServiceProviders>, body: RequestBody, existing: { id: string; status: string; output_path: string | null }) {
+  const generatedImageUrl = existing.status === "completed" && existing.output_path ? await providers.objectStore.createDownloadUrl("customer-simulations", existing.output_path, 300) : undefined;
+  return NextResponse.json({ generationId: existing.id, sessionId: body.sessionId, status: existing.status, ...(generatedImageUrl ? { generatedImageUrl } : {}) }, { status: existing.status === "completed" ? 200 : 202 });
+}
 function validate(body: RequestBody) {
   if (!body) {
     throw new PublicGenerationError("NO_BODY", 400);
