@@ -3,7 +3,7 @@
 export type AuthSession={access_token:string;refresh_token:string;expires_at?:number;expires_in?:number;user:{id:string;email?:string}};
 type ErrorBody={error?:string;message?:string};
 export class SupabaseRequestError extends Error { code:string;status:number;path:string; constructor(path:string,status:number,body:ErrorBody){super(body.message||body.error||"REQUEST_FAILED");this.name="SupabaseRequestError";this.code=body.error||"REQUEST_FAILED";this.status=status;this.path=path} }
-export const isSupabaseConfigured=true;
+export async function isSupabaseConfigured(){try{const response=await fetch("/api/sano/config",{cache:"no-store"});if(!response.ok)return false;return Boolean((await response.json() as {configured?:boolean}).configured)}catch{return false}}
 const sessionKey="marvaa.admin.session";
 let activeTenantId:string|undefined;
 

@@ -1,15 +1,14 @@
 import "server-only";
 import type { AuthProvider, DatabaseProvider, ObjectStore, Principal, ProviderRequest } from "./contracts";
 
-type ErrorBody = { message?: string; msg?: string; error?: string; error_description?: string };
-export class ProviderHttpError extends Error { constructor(readonly status: number, readonly code: string) { super(code); } }
+export class ProviderHttpError extends Error { constructor(readonly status: number) { super("PROVIDER_REQUEST_FAILED"); } }
 
 export class SupabaseProvider implements AuthProvider, DatabaseProvider, ObjectStore {
   constructor(private readonly url: string, private readonly key: string) {}
   private async raw<T>(path: string, init: RequestInit = {}, token = this.key): Promise<T> {
     const response = await fetch(`${this.url}${path}`, { ...init, cache: "no-store", headers: { apikey: this.key, Authorization: `Bearer ${token}`, "Content-Type": "application/json", ...init.headers } });
-    const body = await response.json().catch(() => ({})) as ErrorBody;
-    if (!response.ok) throw new ProviderHttpError(response.status, body.message || body.msg || body.error_description || body.error || "PROVIDER_REQUEST_FAILED");
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) { console.warn("SANO_PROVIDER_REQUEST_FAILED", { provider: "supabase", status: response.status }); throw new ProviderHttpError(response.status); }
     return body as T;
   }
   request<T>({ path, init, accessToken }: ProviderRequest) { return this.raw<T>(path, init, accessToken); }

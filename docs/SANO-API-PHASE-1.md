@@ -10,6 +10,8 @@ Provider selection is centralized in `lib/sano/providers/index.ts`. Public-key p
 
 The data façade accepts only allowlisted resources. Authenticated operations validate the bearer token and confirm access to the requested salon through existing Supabase RLS before forwarding a request. Public operations are limited to the existing public-flow tables/RPC and reject a mismatch between the declared tenant, query filter, and request payload. Storage is authenticated, bucket-allowlisted, and requires tenant-prefixed object keys.
 
+Each resource also has an explicit HTTP method allowlist containing only operations used by Marvaa. Provider failures are translated to stable `UPSTREAM_*` codes; server diagnostics contain only the provider name and HTTP status. The browser obtains a boolean configuration status from `/api/sano/config`, so environment variable names and values remain confined to server modules.
+
 This is a transition boundary, not a replacement for Supabase Auth or RLS. Existing sessions and database/storage policies remain authoritative.
 
 ## Direct-access inventory
