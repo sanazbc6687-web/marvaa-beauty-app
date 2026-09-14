@@ -42,9 +42,9 @@ test("prompt separates identity, profile, recommendation rules, live fragments, 
 test("server route has provider failure state, no fake fallback, idempotency, limits and disabled-service protection", async () => {
   const route = await readFile(new URL("../app/api/simulations/generate/route.ts", import.meta.url), "utf8");
   const client = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
-  assert.match(route, /status: "failed", output_path: null/);
+  assert.match(route, /fail_image_generation_reservation/);
   assert.doesNotMatch(route, /mockOutput|imageUrl:\s*body\.images\.primaryImage\.dataUrl/);
-  assert.match(route, /request_id: body\.requestId/);
+  assert.match(route, /requested_request_id: body\.requestId/);
   assert.match(route, /generation_enabled === false/);
   assert.match(route, /if \(!category\).*SERVICE_DISABLED/);
   assert.match(route, /providers\.ai\.generate/);

@@ -6,12 +6,15 @@ import { selectGenerationReferences } from "@/lib/references/selector";
 import { buildBeautyPrompt, IDENTITY_RULES } from "@/lib/simulation/prompt-builder";
 import { getServiceProviders } from "@/lib/sano/providers";
 import type { ImageAsset, RecommendationMode, StyleReference, StyleReferenceImage } from "@/lib/types";
+import { resolvePublicTenant } from "@/lib/public/tenant";
+import { verifySessionProof } from "@/lib/public/session-proof";
 
 export const runtime = "nodejs";
 const FRIENDLY_ERROR = "در اجرای تغییر مشکلی پیش آمد. لطفاً دوباره تلاش کنید.";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 type RequestBody = {
   requestId: string; sessionId: string; tenantId: string; serviceCategory: string;
+  sessionProof: string; permanentStorageConsent: boolean;
   selectedOptions: Record<string, string>; selectedReferenceSlugs: string[];
   recommendationMode?: RecommendationMode; identityPreservationInstructions?: string[];
   images: { primaryImage: ImageAsset; detailImages: ImageAsset[] };
@@ -26,10 +29,22 @@ export async function POST(request: Request) {
   let body: RequestBody | undefined;
   let generationId: string | undefined;
   try {
+    if (Number(request.headers.get("content-length") || 0) > 30 * 1024 * 1024) throw new PublicGenerationError("REQUEST_TOO_LARGE", 413);
     body = await request.json() as RequestBody;
     validate(body);
-    generationId = crypto.randomUUID();
+    const tenant = resolvePublicTenant(request);
+    if (tenant.id !== body.tenantId) throw new PublicGenerationError("TENANT_MISMATCH", 403);
+    verifySessionProof(body.sessionProof, tenant.id, body.sessionId);
     const providers = getServiceProviders();
+    const reservation = await providers.database.request<Array<{ outcome: string; generation_id: string; output_path: string | null }>>({ path: "/rest/v1/rpc/reserve_image_generation", init: { method: "POST", body: JSON.stringify({ requested_tenant_id: tenant.id, requested_session_id: body.sessionId, requested_request_id: body.requestId, requested_consent: body.permanentStorageConsent }) } });
+    const reserved = reservation[0];
+    if (!reserved) throw new PublicGenerationError("RESERVATION_FAILED", 503);
+    generationId = reserved.generation_id;
+    if (reserved.outcome === "completed") {
+      if (!reserved.output_path) throw new PublicGenerationError("RESULT_EXPIRED", 410);
+      return NextResponse.json({ generationId, sessionId: body.sessionId, generatedImageUrl: await providers.objectStore.createDownloadUrl("customer-simulations", reserved.output_path, 300), status: "completed", metadata: { replayed: true }, referencesUsed: [] });
+    }
+    if (reserved.outcome !== "reserved") throw new PublicGenerationError(reserved.outcome === "in_progress" ? "GENERATION_IN_PROGRESS" : "GENERATION_LIMIT", reserved.outcome === "in_progress" ? 409 : 429);
     const context = await loadContext(body, providers);
     const selected = chooseReferences(body, context.categories, context.references, context.rules, context.profile);
     if (!selected.references.length) throw new PublicGenerationError("NO_ACTIVE_REFERENCE", 422);
@@ -43,31 +58,30 @@ export async function POST(request: Request) {
     });
     const choiceId = crypto.randomUUID();
     const inputBlob = dataUrlBlob(body.images.primaryImage.dataUrl);
-    const inputPath = `${body.tenantId}/${body.sessionId}/input/${crypto.randomUUID()}.${extension(inputBlob.type)}`;
-    const outputPath = `${body.tenantId}/${body.sessionId}/output/${generationId}.png`;
-    await providers.objectStore.upload("customer-simulations", inputPath, inputBlob);
+    const inputPath = body.permanentStorageConsent ? `${body.tenantId}/${body.sessionId}/input/${generationId}.${extension(inputBlob.type)}` : null;
+    const outputPath = body.permanentStorageConsent ? `${body.tenantId}/${body.sessionId}/output/${generationId}.png` : null;
+    if (inputPath) await providers.objectStore.upload("customer-simulations", inputPath, inputBlob);
     await providers.database.request({path:"/rest/v1/user_choices", init:{ method: "POST", headers: { Prefer: "return=minimal" }, body: JSON.stringify({
       id: choiceId, tenant_id: body.tenantId, session_id: body.sessionId, category_id: selected.category.id,
       path: body.recommendationMode ? "consult" : "self", selections: body.selectedOptions,
     }) }});
     const diagnostics = metadata(body, selected, rules, started);
-    await providers.database.request({path:"/rest/v1/image_generations",init:{ method: "POST", headers: { Prefer: "return=minimal" }, body: JSON.stringify({
-      id: generationId, request_id: body.requestId, tenant_id: body.tenantId, session_id: body.sessionId, choice_id: choiceId,
-      input_path: inputPath, output_path: null, provider: "openai", status: "pending", metadata: diagnostics,
-    }) }});
+    await providers.database.request({path:`/rest/v1/image_generations?id=eq.${generationId}`,init:{ method: "PATCH", body: JSON.stringify({ choice_id: choiceId, input_path: inputPath, metadata: diagnostics }) }});
     const result = await providers.ai.generate({
       primaryImage: body.images.primaryImage, detailImages: body.images.detailImages,
       selectedReferenceImages: selected.images, selectedReferences: selected.references,
       recommendationMode: engineMode(body.recommendationMode), beautyProfile: context.profile,
       identityPreservationRules: [...IDENTITY_RULES, ...(body.identityPreservationInstructions ?? [])], generationPrompt: prompt,
     });
-    await providers.objectStore.upload("customer-simulations", outputPath, new Blob([Buffer.from(result.bytes)], { type: result.contentType }));
+    const resultBytes = Buffer.from(result.bytes);
+    if (outputPath) await providers.objectStore.upload("customer-simulations", outputPath, new Blob([resultBytes], { type: result.contentType }));
     const completed = { ...diagnostics, model: result.model, durationMs: Date.now() - started, success: true };
     await providers.database.request({path:`/rest/v1/image_generations?id=eq.${generationId}`,init:{ method: "PATCH", body: JSON.stringify({ output_path: outputPath, status: "completed", metadata: completed }) }});
     log("success", body, completed);
-    return NextResponse.json({ generationId, sessionId: body.sessionId, generatedImageUrl: await providers.objectStore.createDownloadUrl("customer-simulations", outputPath), status: "completed", metadata: completed, referencesUsed: selected.references.map(reference => reference.id) });
+    const generatedImageUrl = outputPath ? await providers.objectStore.createDownloadUrl("customer-simulations", outputPath, 300) : `data:${result.contentType};base64,${resultBytes.toString("base64")}`;
+    return NextResponse.json({ generationId, sessionId: body.sessionId, generatedImageUrl, persistent: Boolean(outputPath), status: "completed", metadata: completed, referencesUsed: selected.references.map(reference => reference.id) });
   } catch (error) {
-    if (generationId) await getServiceProviders().database.request({path:`/rest/v1/image_generations?id=eq.${generationId}`,init:{ method: "PATCH", body: JSON.stringify({ status: "failed", output_path: null, metadata: { success: false, durationMs: Date.now() - started } }) }}).catch(() => undefined);
+    if (generationId) await getServiceProviders().database.request({path:"/rest/v1/rpc/fail_image_generation_reservation",init:{ method: "POST", body: JSON.stringify({ requested_generation_id: generationId, failure_code: safeCode(error) }) }}).catch(() => undefined);
     const status = error instanceof PublicGenerationError ? error.status : duplicate(error) ? 409 : 500;
 console.error("[beauty-generation]", JSON.stringify({
   event: "failure",
@@ -88,9 +102,6 @@ async function loadContext(body: RequestBody, providers: ReturnType<typeof getSe
   if (!session.length) throw new PublicGenerationError("INVALID_SESSION", 403);
   const settings = await request<{ value: { anonymous?: number; maximum?: number; generation_enabled?: boolean } }[]>(`/rest/v1/app_settings?select=value&tenant_id=eq.${body.tenantId}&key=eq.generation_limits&limit=1`);
   if (settings[0]?.value.generation_enabled === false) throw new PublicGenerationError("GENERATION_DISABLED", 403);
-  const generations = await request<{ id: string }[]>(`/rest/v1/image_generations?select=id&tenant_id=eq.${body.tenantId}&session_id=eq.${body.sessionId}&status=eq.completed`);
-  const limit = settings[0]?.value.maximum ?? 3;
-  if (generations.length >= limit) throw new PublicGenerationError("GENERATION_LIMIT", 429);
   const categories = await request<CategoryRow[]>(`/rest/v1/service_categories?select=id,slug,enabled&tenant_id=eq.${body.tenantId}&enabled=eq.true&order=sort_order.asc`);
   if (!categories.length) throw new PublicGenerationError("NO_ENABLED_SERVICES", 403);
   const references = await request<DbReference[]>(`/rest/v1/style_references?select=*,style_reference_images(id,style_reference_id,storage_path,alt_fa,alt_en,is_primary,sort_order,active)&tenant_id=eq.${body.tenantId}&active=eq.true&style_reference_images.active=eq.true&order=sort_order.asc`);
@@ -128,7 +139,16 @@ async function mapReference(row: DbReference, providers: ReturnType<typeof getSe
 function mapRules(rows: DbRule[]): RecommendationRule[] { return rows.map(row => ({ id: row.id, serviceId: row.service_category_id, referenceId: row.style_reference_id ?? undefined, featureKey: row.feature_key, operator: row.operator, comparisonValue: row.comparison_value ?? undefined, scoreAdjustment: Number(row.score_adjustment), reasonFa: row.reason_fa, reasonEn: row.reason_en, priority: row.priority, active: row.active, metadata: row.metadata })); }
 function engineMode(mode?: RecommendationMode): EngineMode { return mode === "natural" ? "subtle" : mode === "bold" ? "bold" : "enhanced"; }
 function referencePurpose(reference: StyleReference) { return String(reference.metadata.referencePurpose ?? reference.metadata.purpose ?? reference.referenceType); }
-function dataUrlBlob(value: string) { const match = /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/.exec(value); if (!match) throw new PublicGenerationError("INVALID_IMAGE", 400); const bytes = Buffer.from(match[2], "base64"); if (bytes.length > 10 * 1024 * 1024) throw new PublicGenerationError("IMAGE_TOO_LARGE", 413); return new Blob([bytes], { type: match[1] }); }
+function dataUrlBlob(value: string) { const match = /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/.exec(value); if (!match) throw new PublicGenerationError("INVALID_IMAGE", 400); const bytes = Buffer.from(match[2], "base64"); if (bytes.length > 10 * 1024 * 1024) throw new PublicGenerationError("IMAGE_TOO_LARGE", 413); validateMagic(bytes, match[1]); return new Blob([bytes], { type: match[1] }); }
+function validateMagic(bytes: Buffer, mime: string) {
+  const png = bytes.length >= 24 && bytes.subarray(0, 8).equals(Buffer.from([137,80,78,71,13,10,26,10]));
+  const jpeg = bytes.length >= 4 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[bytes.length - 2] === 0xff && bytes[bytes.length - 1] === 0xd9;
+  const webp = bytes.length >= 30 && bytes.toString("ascii", 0, 4) === "RIFF" && bytes.toString("ascii", 8, 12) === "WEBP";
+  if ((mime === "image/png" && !png) || (mime === "image/jpeg" && !jpeg) || (mime === "image/webp" && !webp)) throw new PublicGenerationError("INVALID_IMAGE_BYTES", 400);
+  if (png) validateDimensions(bytes.readUInt32BE(16), bytes.readUInt32BE(20));
+  if (webp && bytes.toString("ascii", 12, 16) === "VP8X") validateDimensions(1 + bytes.readUIntLE(24, 3), 1 + bytes.readUIntLE(27, 3));
+}
+function validateDimensions(width: number, height: number) { if (width < 128 || height < 128 || width > 8192 || height > 8192 || width * height > 40_000_000) throw new PublicGenerationError("INVALID_IMAGE_DIMENSIONS", 400); }
 function extension(type: string) { return type === "image/png" ? "png" : type === "image/webp" ? "webp" : "jpg"; }
 function validate(body: RequestBody) {
   if (!body) {
@@ -150,6 +170,7 @@ function validate(body: RequestBody) {
   if (!body.images?.primaryImage) {
     throw new PublicGenerationError("NO_PRIMARY_IMAGE", 400);
   }
+  if (typeof body.permanentStorageConsent !== "boolean" || typeof body.sessionProof !== "string" || body.sessionProof.length > 2048) throw new PublicGenerationError("INVALID_SESSION", 400);
 
   if (body.images.detailImages.length > 3) {
     throw new PublicGenerationError("TOO_MANY_DETAIL_IMAGES", 400);

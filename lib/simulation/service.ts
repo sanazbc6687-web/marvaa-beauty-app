@@ -7,11 +7,12 @@ import { normalizeRecommendationMode } from "../recommendation/mode";
 
 export type SimulationInput = {
   images: GenerationImageInputs; tenantId: string; serviceCategory: string;
+  permanentStorageConsent: boolean;
   selectedOptions: Record<string, string>; selectedReferences: string[];
   recommendationMode?: RecommendationMode; identityPreservationInstructions?: string[];
 };
 export type SimulationResult = {
-  generationId: string; sessionId: string; generatedImageUrl: string; status: "completed";
+  generationId: string; sessionId: string; generatedImageUrl: string; persistent?: boolean; status: "completed";
   metadata: { provider: "openai"; model: string; tenantId: string; createdAt?: string; [key: string]: unknown };
   referencesUsed: string[];
 };
@@ -22,9 +23,10 @@ export class SimulationGenerationError extends Error {
 
 export async function generateBeautySimulation(input: SimulationInput, requestId = crypto.randomUUID()): Promise<SimulationResult> {
   // The server route owns customer-simulations input/output storage and generation persistence.
-  const sessionId = await getOrCreatePublicSession(input.tenantId);
+  const session = await getOrCreatePublicSession();
+  if (input.tenantId !== session.tenantId) throw new SimulationGenerationError("TENANT_MISMATCH", "نشست معتبر نیست.");
   const response = await fetch("/api/simulations/generate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
-    ...input, recommendationMode: normalizeRecommendationMode(input.recommendationMode), requestId, sessionId, selectedReferenceSlugs: input.selectedReferences,
+    ...input, recommendationMode: normalizeRecommendationMode(input.recommendationMode), requestId, sessionId: session.sessionId, sessionProof: session.sessionProof, selectedReferenceSlugs: input.selectedReferences,
     images: { primaryImage: input.images.primaryImage, detailImages: input.images.detailImages },
   }) });
   const result = await response.json().catch(() => ({})) as SimulationResult & { error?: string; message?: string };
