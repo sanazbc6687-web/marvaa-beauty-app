@@ -167,11 +167,11 @@ test("simulation and lead creation share the persistent public session helper", 
   const simulation = read("lib/simulation/service.ts");
   const serverRoute = read("app/api/simulations/generate/route.ts");
   const lead = read("lib/leads/public.ts");
-  assert.match(simulation, /getOrCreatePublicSession\(input\.tenantId\)/);
-  assert.match(lead, /getOrCreatePublicSession\(input\.tenantId\)/);
+  assert.match(simulation, /getOrCreatePublicSession\(\)/g);
+  assert.match(lead, /getOrCreatePublicSession\(\)/g);
   assert.doesNotMatch(lead, /crypto\.randomUUID/);
   assert.match(simulation, /customer-simulations/);
-  assert.match(serverRoute, /output_path: null, provider: "openai", status: "pending"/);
+  assert.match(serverRoute, /reserve_image_generation/);
   assert.match(serverRoute, /output_path: outputPath, status: "completed"/);
 });
 

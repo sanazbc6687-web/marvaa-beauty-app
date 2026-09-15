@@ -11,7 +11,9 @@ export async function createPublicLead(input:PublicLeadInput){
  try{
   const mobile=normalizeIranianMobile(input.mobile);
   if(!isValidIranianMobile(mobile))throw new Error(IRANIAN_MOBILE_ERROR);
-  const sessionId=await getOrCreatePublicSession(input.tenantId);
+  const session=await getOrCreatePublicSession();
+  if(session.tenantId!==input.tenantId)throw new Error("TENANT_MISMATCH");
+  const sessionId=session.sessionId;
   let serviceCategoryId:string|undefined;
   if(input.serviceSlug){
    const query=new URLSearchParams({select:"id",tenant_id:`eq.${input.tenantId}`,slug:`eq.${input.serviceSlug}`,enabled:"eq.true",limit:"1"});
