@@ -56,4 +56,4 @@ html,body{font-family:var(--font-ui-fa)}
 @media(max-width:700px){.main-choices{grid-template-columns:1fr}.main-choices .mirror-tile{min-height:112px;flex-direction:row;align-items:center}}
 
 
-.welcome.splash-only{min-height:100svh;background:#050407;display:grid;place-items:center;overflow:hidden}.welcome-splash-image{width:100%;height:100svh;object-fit:cover;object-position:center center;display:block;animation:marvaSplash 2s ease both}@keyframes marvaSplash{0%{opacity:.35;transform:scale(1.015)}12%{opacity:1}88%{opacity:1}100%{opacity:.92;transform:scale(1)}}
+.welcome.splash-only{min-height:100svh;background:#050407;display:grid;place-items:center;overflow:hidden}.welcome-splash-image{width:100%;height:100svh;object-fit:cover;object-position:center center;display:block;image-rendering:auto}12%{opacity:1}88%{opacity:1}100%{opacity:.92;transform:scale(1)}}
