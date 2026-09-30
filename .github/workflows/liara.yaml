@@ -32,4 +32,4 @@ jobs:
       - name: Deploy to Liara
         env:
           LIARA_TOKEN: ${{ secrets.LIARA_API_TOKEN }}
-        run: liara deploy --app="marvaa-beauty-app" --api-token="$LIARA_TOKEN" --port=3000 --no-app-logs
+        run: liara deploy --app="marvaa-beauty-app" --api-token="$LIARA_TOKEN" --port=3000 --build-location="germany" --no-app-logs
