@@ -15,14 +15,14 @@ export async function getEnabledPublicServices(tenantId: string): Promise<Servic
   const query = new URLSearchParams({
     select: "slug,enabled",
     tenant_id: `eq.${tenantId}`,
-    enabled: "eq.true",
   });
 
   try {
     const rows = await publicRequest<PublicServiceCategory[]>(`/rest/v1/service_categories?${query}`);
+    if (!rows.length) return services;
     return matchEnabledServices(rows);
   } catch (error) {
     logSupabaseError("load public service availability", error);
-    throw error;
+    return services;
   }
 }
