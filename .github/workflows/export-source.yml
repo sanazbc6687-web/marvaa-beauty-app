@@ -1,0 +1,42 @@
+name: Export MARVAA Source
+
+on:
+  push:
+    branches:
+      - source-export-20261103
+    paths:
+      - .github/workflows/export-source.yml
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Create source ZIP
+        run: |
+          zip -r MARVAA-Beauty-Source.zip . \
+            -x ".git/*" \
+               "node_modules/*" \
+               ".next/*" \
+               "public/*.jpg" \
+               "public/*.jpeg" \
+               "public/*.png" \
+               "public/*.webp" \
+               "public/*.gif" \
+               "public/*.mp4" \
+               "public/*.mov" \
+               "public/*.pdf"
+
+      - name: Upload source ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: MARVAA-Beauty-Source
+          path: MARVAA-Beauty-Source.zip
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
